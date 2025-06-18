@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Text Editor</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Login/Register Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="authTitle">Login</h2>
+                <span class="close" onclick="closeAuthModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="authForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </form>
+                <div class="auth-switch">
+                    <span id="authSwitchText">Don't have an account?</span>
+                    <a href="#" id="authSwitchLink" onclick="toggleAuthMode()">Register</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="app" class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="logo">
+                    <i class="fas fa-code"></i>
+                    Web Editor
+                </h1>
+            </div>
+            <div class="header-right">
+                <div class="user-info" id="userInfo" style="display: none;">
+                    <span id="usernameDisplay"></span>
+                    <button class="btn btn-secondary" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </button>
+                </div>
+                <button class="btn btn-primary" id="loginBtn" onclick="showAuthModal()">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Login
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>Files</h3>
+                    <div class="sidebar-actions">
+                        <button class="btn btn-icon" onclick="showCreateFileModal()" title="Create New File">
+                            <i class="fas fa-file-plus"></i>
+                        </button>
+                        <button class="btn btn-icon" onclick="showCreateDirectoryModal()" title="Create New Directory">
+                            <i class="fas fa-folder-plus"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="file-list" id="fileList">
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open"></i>
+                        <p>No files yet</p>
+                        <div class="empty-state-actions">
+                            <button class="btn btn-secondary" onclick="showCreateFileModal()">Create your first file</button>
+                            <button class="btn btn-secondary" onclick="showCreateDirectoryModal()">Create a directory</button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Editor Area -->
+            <section class="editor-area">
+                <div class="editor-header">
+                    <div class="file-info">
+                        <span id="currentFileName">No file selected</span>
+                        <span id="fileStatus" class="file-status"></span>
+                    </div>
+                    <div class="editor-actions">
+                        <button class="btn btn-secondary" id="saveBtn" onclick="saveCurrentFile()" disabled>
+                            <i class="fas fa-save"></i>
+                            Save
+                        </button>
+                        <button class="btn btn-danger" id="deleteBtn" onclick="deleteCurrentFile()" disabled>
+                            <i class="fas fa-trash"></i>
+                            Delete
+                        </button>
+                    </div>
+                </div>
+                <div class="editor-container">
+                    <textarea id="editor" placeholder="Select a file to start editing..." disabled></textarea>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Create File Modal -->
+    <div id="createFileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New File</h2>
+                <span class="close" onclick="closeCreateFileModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="createFileForm">
+                    <div class="form-group">
+                        <label for="newFileName">File Name</label>
+                        <input type="text" id="newFileName" name="filename" placeholder="example.txt" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeCreateFileModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create File</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Directory Modal -->
+    <div id="createDirectoryModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Directory</h2>
+                <span class="close" onclick="closeCreateDirectoryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="createDirectoryForm">
+                    <div class="form-group">
+                        <label for="newDirectoryName">Directory Name</label>
+                        <input type="text" id="newDirectoryName" name="dirname" placeholder="my-directory" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeCreateDirectoryModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Directory</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
