@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
 </head>
 <body>
     <!-- Login/Register Modal -->
@@ -66,7 +67,15 @@
             <!-- Sidebar -->
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-header">
-                    <h3>Files</h3>
+                    <div class="sidebar-title">
+                        <h3>Files</h3>
+                        <button class="btn btn-icon" onclick="showSearchModal()" title="Search Files">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div class="breadcrumb" id="breadcrumb">
+                        <span class="breadcrumb-item" onclick="navigateToRoot()">Home</span>
+                    </div>
                     <div class="sidebar-actions">
                         <button class="btn btn-icon" onclick="showCreateFileModal()" title="Create New File">
                             <i class="fas fa-file-plus"></i>
@@ -116,43 +125,65 @@
     <!-- Create File Modal -->
     <div id="createFileModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2>Create New File</h2>
-                <span class="close" onclick="closeCreateFileModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="createFileForm">
+            <form id="createFileForm">
+                <div class="modal-header">
+                    <h2>Create File</h2>
+                    <span class="close" onclick="closeCreateFileModal()">&times;</span>
+                </div>
+                <div class="modal-body">
                     <div class="form-group">
                         <label for="newFileName">File Name</label>
-                        <input type="text" id="newFileName" name="filename" placeholder="example.txt" required>
+                        <input type="text" id="newFileName" name="filename" required>
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeCreateFileModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Create File</button>
-                    </div>
-                </form>
-            </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Create File</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateFileModal()">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 
     <!-- Create Directory Modal -->
     <div id="createDirectoryModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2>Create New Directory</h2>
-                <span class="close" onclick="closeCreateDirectoryModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="createDirectoryForm">
+            <form id="createDirectoryForm">
+                <div class="modal-header">
+                    <h2>Create Directory</h2>
+                    <span class="close" onclick="closeCreateDirectoryModal()">&times;</span>
+                </div>
+                <div class="modal-body">
                     <div class="form-group">
                         <label for="newDirectoryName">Directory Name</label>
-                        <input type="text" id="newDirectoryName" name="dirname" placeholder="my-directory" required>
+                        <input type="text" id="newDirectoryName" name="dirname" required>
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeCreateDirectoryModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Create Directory</button>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Create Directory</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateDirectoryModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Search Modal -->
+    <div id="searchModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Search Files</h2>
+                <span class="close" onclick="closeSearchModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="searchInput">Search Files and Folders</label>
+                    <input type="text" id="searchInput" placeholder="Type to search..." autocomplete="off">
+                </div>
+                <div class="search-results" id="searchResults">
+                    <div class="empty-search">
+                        <i class="fas fa-search"></i>
+                        <p>Start typing to search files and folders</p>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>

@@ -81,7 +81,7 @@ private:
     std::string get_mime_type(const std::string& filename);
     std::string read_file_content(const std::string& path);
     bool write_file_content(const std::string& path, const std::string& content);
-    std::vector<FileInfo> list_user_files(const std::string& username);
+    std::vector<FileInfo> list_user_files(const std::string& username, const std::string& path = "");
     std::string create_user_filesystem(const std::string& username);
     bool delete_user_filesystem(const std::string& username);
     

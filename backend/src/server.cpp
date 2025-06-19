@@ -184,16 +184,25 @@ bool WebServer::delete_user_filesystem(const std::string& username) {
     return true;
 }
 
-std::vector<FileInfo> WebServer::list_user_files(const std::string& username) {
+std::vector<FileInfo> WebServer::list_user_files(const std::string& username, const std::string& path) {
     std::vector<FileInfo> files;
     std::string user_dir = data_dir + "/users/" + username;
+    std::string target_dir = user_dir;
     
-    if (!fs::exists(user_dir)) return files;
+    if (!path.empty()) {
+        target_dir += "/" + path;
+    }
     
-    for (const auto& entry : fs::directory_iterator(user_dir)) {
+    if (!fs::exists(target_dir)) return files;
+    
+    for (const auto& entry : fs::directory_iterator(target_dir)) {
         FileInfo file;
         file.name = entry.path().filename().string();
-        file.path = entry.path().string();
+        
+        // Calculate relative path from user directory
+        std::string relative_path = fs::relative(entry.path(), user_dir).string();
+        file.path = relative_path;
+        
         file.last_modified = fs::last_write_time(entry.path()).time_since_epoch().count();
         file.is_directory = entry.is_directory();
         
@@ -214,28 +223,44 @@ std::vector<FileInfo> WebServer::list_user_files(const std::string& username) {
 // Session management
 std::string WebServer::extract_session_token(const HttpRequest& request) {
     auto it = request.headers.find("Cookie");
-    if (it == request.headers.end()) return "";
+    if (it == request.headers.end()) {
+        std::cout << "No Cookie header found in request" << std::endl;
+        return "";
+    }
     
     std::string cookies = it->second;
+    std::cout << "Cookie header: " << cookies << std::endl;
+    
     std::regex token_regex("session=([^;]+)");
     std::smatch match;
     
     if (std::regex_search(cookies, match, token_regex)) {
-        return match[1].str();
+        std::string token = match[1].str();
+        std::cout << "Extracted session token: " << token << std::endl;
+        return token;
     }
+    
+    std::cout << "No session token found in cookies" << std::endl;
     return "";
 }
 
 bool WebServer::is_session_valid(const std::string& token) {
+    std::cout << "Validating session token: " << token << std::endl;
+    
     auto it = sessions.find(token);
-    if (it == sessions.end()) return false;
+    if (it == sessions.end()) {
+        std::cout << "Session token not found in sessions map" << std::endl;
+        return false;
+    }
     
     time_t now = time(nullptr);
     if (now - it->second.last_activity > 3600) { // 1 hour timeout
+        std::cout << "Session token expired" << std::endl;
         sessions.erase(it);
         return false;
     }
     
+    std::cout << "Session token is valid for user: " << it->second.username << std::endl;
     return true;
 }
 
@@ -271,12 +296,18 @@ HttpRequest WebServer::parse_http_request(const std::string& request) {
         }
     }
     
-    // Parse body
-    std::stringstream body_stream;
-    while (std::getline(stream, line)) {
-        body_stream << line << "\n";
+    // Parse body - read the entire remaining content as the body without adding newlines
+    std::string body;
+    std::string body_line;
+    while (std::getline(stream, body_line)) {
+        if (!body.empty()) body += "\n";
+        body += body_line;
     }
-    req.body = body_stream.str();
+    // Remove the trailing newline that was added
+    if (!body.empty() && body.back() == '\n') {
+        body.pop_back();
+    }
+    req.body = body;
     
     // Parse query parameters
     size_t query_pos = req.path.find('?');
@@ -328,15 +359,17 @@ HttpResponse WebServer::handle_static_file(const std::string& path) {
 }
 
 HttpResponse WebServer::handle_login(const HttpRequest& request) {
-    std::istringstream body_stream(request.body);
-    std::string line;
+    std::string body = request.body;
     std::map<std::string, std::string> form_data;
     
-    while (std::getline(body_stream, line)) {
-        size_t equal_pos = line.find('=');
+    // Parse form data properly
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
         if (equal_pos != std::string::npos) {
-            std::string key = url_decode(line.substr(0, equal_pos));
-            std::string value = url_decode(line.substr(equal_pos + 1));
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
             form_data[key] = value;
         }
     }
@@ -366,15 +399,17 @@ HttpResponse WebServer::handle_login(const HttpRequest& request) {
 }
 
 HttpResponse WebServer::handle_register(const HttpRequest& request) {
-    std::istringstream body_stream(request.body);
-    std::string line;
+    std::string body = request.body;
     std::map<std::string, std::string> form_data;
     
-    while (std::getline(body_stream, line)) {
-        size_t equal_pos = line.find('=');
+    // Parse form data properly
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
         if (equal_pos != std::string::npos) {
-            std::string key = url_decode(line.substr(0, equal_pos));
-            std::string value = url_decode(line.substr(equal_pos + 1));
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
             form_data[key] = value;
         }
     }
@@ -382,11 +417,17 @@ HttpResponse WebServer::handle_register(const HttpRequest& request) {
     std::string username = form_data["username"];
     std::string password = form_data["password"];
     
+    std::cout << "Registration attempt for username: " << username << std::endl;
+    std::cout << "Current users count: " << users.size() << std::endl;
+    
+    // Check if username already exists
     if (users.find(username) != users.end()) {
+        std::cout << "Username already exists: " << username << std::endl;
         return {409, "Conflict", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Username already exists\"}"};
     }
     
+    // Create new user
     User user;
     user.username = username;
     user.password_hash = hash_password(password);
@@ -394,6 +435,11 @@ HttpResponse WebServer::handle_register(const HttpRequest& request) {
     user.last_activity = time(nullptr);
     
     users[username] = user;
+    
+    std::cout << "User created successfully: " << username << std::endl;
+    std::cout << "Total users after creation: " << users.size() << std::endl;
+    
+    // Save users immediately after registration
     save_users();
     
     return {200, "OK", {{"Content-Type", "application/json"}}, 
@@ -422,19 +468,36 @@ HttpResponse WebServer::handle_get_files(const HttpRequest& request) {
     
     update_session_activity(token);
     std::string username = sessions[token].username;
-    std::vector<FileInfo> files = list_user_files(username);
     
-    std::cout << "Listing files for user " << username << ": " << files.size() << " items found" << std::endl;
+    // Get the requested path from query parameters
+    auto path_it = request.query_params.find("path");
+    std::string requested_path = (path_it != request.query_params.end()) ? path_it->second : "";
+    
+    std::vector<FileInfo> files = list_user_files(username, requested_path);
+    std::vector<FileInfo> all_files = list_user_files(username, ""); // All files for search
+    
+    std::cout << "Listing files for user " << username << " in path '" << requested_path << "': " << files.size() << " items found" << std::endl;
     
     std::ostringstream json;
     json << "{\"success\": true, \"files\": [";
     for (size_t i = 0; i < files.size(); i++) {
         if (i > 0) json << ",";
         json << "{\"name\":\"" << files[i].name << "\","
+             << "\"fullPath\":\"" << files[i].path << "\","
              << "\"size\":" << files[i].size << ","
              << "\"lastModified\":" << files[i].last_modified << ","
              << "\"isDirectory\":" << (files[i].is_directory ? "true" : "false") << ","
              << "\"path\":\"" << files[i].path << "\"}";
+    }
+    json << "], \"allFiles\": [";
+    for (size_t i = 0; i < all_files.size(); i++) {
+        if (i > 0) json << ",";
+        json << "{\"name\":\"" << all_files[i].name << "\","
+             << "\"fullPath\":\"" << all_files[i].path << "\","
+             << "\"size\":" << all_files[i].size << ","
+             << "\"lastModified\":" << all_files[i].last_modified << ","
+             << "\"isDirectory\":" << (all_files[i].is_directory ? "true" : "false") << ","
+             << "\"path\":\"" << all_files[i].path << "\"}";
     }
     json << "]}";
     
@@ -481,15 +544,17 @@ HttpResponse WebServer::handle_save_file(const HttpRequest& request) {
     update_session_activity(token);
     std::string username = sessions[token].username;
     
-    std::istringstream body_stream(request.body);
-    std::string line;
+    std::string body = request.body;
     std::map<std::string, std::string> form_data;
     
-    while (std::getline(body_stream, line)) {
-        size_t equal_pos = line.find('=');
+    // Parse form data properly
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
         if (equal_pos != std::string::npos) {
-            std::string key = url_decode(line.substr(0, equal_pos));
-            std::string value = url_decode(line.substr(equal_pos + 1));
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
             form_data[key] = value;
         }
     }
@@ -515,29 +580,37 @@ HttpResponse WebServer::handle_save_file(const HttpRequest& request) {
 HttpResponse WebServer::handle_create_file(const HttpRequest& request) {
     std::string token = extract_session_token(request);
     if (!is_session_valid(token)) {
+        std::cout << "Create file: Invalid session token" << std::endl;
         return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Invalid session\"}"};
     }
     
     update_session_activity(token);
     std::string username = sessions[token].username;
+    std::cout << "Create file request from user: " << username << std::endl;
     
-    std::istringstream body_stream(request.body);
-    std::string line;
+    std::string body = request.body;
+    std::cout << "Request body: " << body << std::endl;
+    
     std::map<std::string, std::string> form_data;
     
-    while (std::getline(body_stream, line)) {
-        size_t equal_pos = line.find('=');
+    // Parse form data properly
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
         if (equal_pos != std::string::npos) {
-            std::string key = url_decode(line.substr(0, equal_pos));
-            std::string value = url_decode(line.substr(equal_pos + 1));
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
             form_data[key] = value;
+            std::cout << "Parsed form data: " << key << " = " << value << std::endl;
         }
     }
     
     std::string filename = form_data["filename"];
     
     if (filename.empty()) {
+        std::cout << "Create file: No filename provided" << std::endl;
         return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Filename required\"}"};
     }
@@ -545,7 +618,15 @@ HttpResponse WebServer::handle_create_file(const HttpRequest& request) {
     std::string file_path = data_dir + "/users/" + username + "/" + filename;
     std::cout << "Creating file: " << file_path << std::endl;
     
+    // Ensure user directory exists
+    std::string user_dir = data_dir + "/users/" + username;
+    if (!fs::exists(user_dir)) {
+        std::cout << "Creating user directory: " << user_dir << std::endl;
+        fs::create_directories(user_dir);
+    }
+    
     if (fs::exists(file_path)) {
+        std::cout << "File already exists: " << file_path << std::endl;
         return {409, "Conflict", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"File already exists\"}"};
     }
@@ -600,34 +681,90 @@ HttpResponse WebServer::handle_index() {
 // User data persistence
 void WebServer::load_users() {
     std::string users_file = data_dir + "/users.txt";
+    std::cout << "Loading users from: " << users_file << std::endl;
+    
     std::ifstream file(users_file);
-    if (!file.is_open()) return;
+    if (!file.is_open()) {
+        std::cout << "No users file found, starting with empty user list" << std::endl;
+        return;
+    }
     
     std::string line;
+    int user_count = 0;
+    int line_number = 0;
+    
     while (std::getline(file, line)) {
-        std::istringstream line_stream(line);
-        User user;
-        std::getline(line_stream, user.username, '|');
-        std::getline(line_stream, user.password_hash, '|');
-        std::getline(line_stream, user.filesystem_path, '|');
-        std::string last_activity_str;
-        std::getline(line_stream, last_activity_str, '|');
-        user.last_activity = std::stol(last_activity_str);
+        line_number++;
+        if (line.empty()) continue;
         
-        users[user.username] = user;
+        try {
+            std::istringstream line_stream(line);
+            User user;
+            
+            if (!std::getline(line_stream, user.username, '|')) {
+                std::cout << "Warning: Invalid user data at line " << line_number << std::endl;
+                continue;
+            }
+            
+            if (!std::getline(line_stream, user.password_hash, '|')) {
+                std::cout << "Warning: Invalid password hash at line " << line_number << std::endl;
+                continue;
+            }
+            
+            if (!std::getline(line_stream, user.filesystem_path, '|')) {
+                std::cout << "Warning: Invalid filesystem path at line " << line_number << std::endl;
+                continue;
+            }
+            
+            std::string last_activity_str;
+            if (!std::getline(line_stream, last_activity_str, '|')) {
+                std::cout << "Warning: Invalid last activity at line " << line_number << std::endl;
+                continue;
+            }
+            
+            try {
+                user.last_activity = std::stol(last_activity_str);
+            } catch (const std::exception& e) {
+                std::cout << "Warning: Invalid timestamp at line " << line_number << ", using current time" << std::endl;
+                user.last_activity = time(nullptr);
+            }
+            
+            users[user.username] = user;
+            user_count++;
+            std::cout << "Loaded user: " << user.username << std::endl;
+        } catch (const std::exception& e) {
+            std::cout << "Error parsing user data at line " << line_number << ": " << e.what() << std::endl;
+        }
     }
+    std::cout << "Loaded " << user_count << " users successfully" << std::endl;
 }
 
 void WebServer::save_users() {
     std::string users_file = data_dir + "/users.txt";
-    std::ofstream file(users_file);
-    if (!file.is_open()) return;
+    std::cout << "Saving users to: " << users_file << std::endl;
     
+    // Ensure the data directory exists
+    if (!fs::exists(data_dir)) {
+        std::cout << "Creating data directory: " << data_dir << std::endl;
+        fs::create_directories(data_dir);
+    }
+    
+    std::ofstream file(users_file);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open users file for writing: " << users_file << std::endl;
+        return;
+    }
+    
+    int user_count = 0;
     for (const auto& pair : users) {
         const User& user = pair.second;
         file << user.username << "|" << user.password_hash << "|" 
              << user.filesystem_path << "|" << user.last_activity << "\n";
+        user_count++;
+        std::cout << "Saved user: " << user.username << std::endl;
     }
+    std::cout << "Saved " << user_count << " users successfully" << std::endl;
+    file.close();
 }
 
 // Server lifecycle
@@ -719,43 +856,63 @@ void start_server(uint16_t port) {
 HttpResponse WebServer::handle_create_directory(const HttpRequest& request) {
     std::string token = extract_session_token(request);
     if (!is_session_valid(token)) {
+        std::cout << "Create directory: Invalid session token" << std::endl;
         return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Invalid session\"}"};
     }
     
     update_session_activity(token);
     std::string username = sessions[token].username;
+    std::cout << "Create directory request from user: " << username << std::endl;
     
-    std::istringstream body_stream(request.body);
-    std::string line;
+    std::string body = request.body;
+    std::cout << "Request body: " << body << std::endl;
+    
     std::map<std::string, std::string> form_data;
     
-    while (std::getline(body_stream, line)) {
-        size_t equal_pos = line.find('=');
+    // Parse form data properly
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
         if (equal_pos != std::string::npos) {
-            std::string key = url_decode(line.substr(0, equal_pos));
-            std::string value = url_decode(line.substr(equal_pos + 1));
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
             form_data[key] = value;
+            std::cout << "Parsed form data: " << key << " = " << value << std::endl;
         }
     }
     
     std::string dirname = form_data["dirname"];
     
     if (dirname.empty()) {
+        std::cout << "Create directory: No directory name provided" << std::endl;
         return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Directory name required\"}"};
     }
     
     std::string dir_path = data_dir + "/users/" + username + "/" + dirname;
+    std::cout << "Creating directory: " << dir_path << std::endl;
+    
+    // Ensure user directory exists
+    std::string user_dir = data_dir + "/users/" + username;
+    if (!fs::exists(user_dir)) {
+        std::cout << "Creating user directory: " << user_dir << std::endl;
+        fs::create_directories(user_dir);
+    }
+    
     if (fs::exists(dir_path)) {
+        std::cout << "Directory already exists: " << dir_path << std::endl;
         return {409, "Conflict", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Directory already exists\"}"};
     }
     
     if (fs::create_directories(dir_path)) {
+        std::cout << "Directory created successfully: " << dir_path << std::endl;
         return {200, "OK", {{"Content-Type", "application/json"}}, 
                 "{\"success\": true, \"message\": \"Directory created successfully\"}"};
     } else {
+        std::cout << "Failed to create directory: " << dir_path << std::endl;
         return {500, "Internal Server Error", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Failed to create directory\"}"};
     }

@@ -5,6 +5,9 @@ let files = [];
 let isAuthenticated = false;
 let isRegisterMode = false;
 let hasUnsavedChanges = false;
+let currentPath = ''; // Current directory path
+let allFiles = []; // All files for search functionality
+let searchTimeout = null; // For debounced search
 
 // DOM elements
 const authModal = document.getElementById('authModal');
@@ -17,6 +20,7 @@ const userInfo = document.getElementById('userInfo');
 const usernameDisplay = document.getElementById('usernameDisplay');
 const sidebar = document.getElementById('sidebar');
 const fileList = document.getElementById('fileList');
+const breadcrumb = document.getElementById('breadcrumb');
 const editor = document.getElementById('editor');
 const currentFileName = document.getElementById('currentFileName');
 const fileStatus = document.getElementById('fileStatus');
@@ -26,6 +30,9 @@ const createFileModal = document.getElementById('createFileModal');
 const createFileForm = document.getElementById('createFileForm');
 const createDirectoryModal = document.getElementById('createDirectoryModal');
 const createDirectoryForm = document.getElementById('createDirectoryForm');
+const searchModal = document.getElementById('searchModal');
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
 const notification = document.getElementById('notification');
 
 // Initialize the application
@@ -42,6 +49,11 @@ function initializeApp() {
         // Validate session with server
         validateSession(sessionToken);
     }
+
+    // Warn if opened as file://
+    if (window.location.protocol === 'file:') {
+        alert('Please open this app via http://localhost:8080/ and not as a file:// URL. Authentication will not work otherwise.');
+    }
 }
 
 function setupEventListeners() {
@@ -53,6 +65,10 @@ function setupEventListeners() {
     
     // Create directory form submission
     createDirectoryForm.addEventListener('submit', handleCreateDirectory);
+    
+    // Search functionality
+    searchInput.addEventListener('input', handleSearchInput);
+    searchInput.addEventListener('keydown', handleSearchKeydown);
     
     // Editor changes
     editor.addEventListener('input', handleEditorChange);
@@ -120,6 +136,7 @@ async function handleAuthSubmit(e) {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
+            credentials: 'include',
             body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
         });
         
@@ -133,6 +150,8 @@ async function handleAuthSubmit(e) {
                 // Switch to login mode after successful registration
                 isRegisterMode = false;
                 updateAuthUI();
+                // Clear the form for login
+                authForm.reset();
             } else {
                 // Login successful
                 currentUser = username;
@@ -153,9 +172,7 @@ async function validateSession(token) {
     try {
         const response = await fetch('/api/files', {
             method: 'GET',
-            headers: {
-                'Cookie': `session=${token}`
-            }
+            credentials: 'include'
         });
         
         if (response.ok) {
@@ -193,9 +210,10 @@ function logout() {
 }
 
 // File management functions
-async function loadUserFiles() {
+async function loadUserFiles(path = '') {
     try {
-        const response = await fetch('/api/files', {
+        const url = path ? `/api/files?path=${encodeURIComponent(path)}` : '/api/files';
+        const response = await fetch(url, {
             method: 'GET',
             credentials: 'include'
         });
@@ -204,7 +222,10 @@ async function loadUserFiles() {
             const data = await response.json();
             if (data.success) {
                 files = data.files || [];
+                allFiles = data.allFiles || []; // Store all files for search
+                currentPath = path;
                 renderFileList();
+                updateBreadcrumb();
             }
         }
     } catch (error) {
@@ -218,9 +239,9 @@ function renderFileList() {
         fileList.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-folder-open"></i>
-                <p>No files yet</p>
+                <p>No files in this directory</p>
                 <div class="empty-state-actions">
-                    <button class="btn btn-secondary" onclick="showCreateFileModal()">Create your first file</button>
+                    <button class="btn btn-secondary" onclick="showCreateFileModal()">Create a file</button>
                     <button class="btn btn-secondary" onclick="showCreateDirectoryModal()">Create a directory</button>
                 </div>
             </div>
@@ -228,16 +249,96 @@ function renderFileList() {
         return;
     }
     
-    fileList.innerHTML = files.map(file => `
-        <div class="file-item ${currentFile && currentFile.name === file.name ? 'active' : ''} ${file.isDirectory ? 'directory' : ''}" 
-             onclick="${file.isDirectory ? 'openDirectory' : 'openFile'}('${file.name}')">
-            <i class="fas ${file.isDirectory ? 'fa-folder' : 'fa-file-alt'}"></i>
-            <div class="file-info">
-                <div class="file-name">${file.name}</div>
-                <div class="file-meta">${file.isDirectory ? 'Directory' : formatFileSize(file.size)} • ${formatDate(file.lastModified)}</div>
+    // Group files by directory structure
+    const fileTree = buildFileTree(files);
+    
+    fileList.innerHTML = `
+        <ul class="file-tree">
+            ${fileTree.map(item => renderFileTreeItem(item)).join('')}
+        </ul>
+    `;
+    
+    // Add click handlers for tree expansion
+    document.querySelectorAll('.file-tree-item.has-children > .file-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const treeItem = this.closest('.file-tree-item');
+            treeItem.classList.toggle('expanded');
+        });
+    });
+}
+
+function buildFileTree(files) {
+    const tree = [];
+    const fileMap = new Map();
+    
+    // Sort files: directories first, then by name
+    const sortedFiles = files.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) {
+            return b.isDirectory ? 1 : -1;
+        }
+        return a.name.localeCompare(b.name);
+    });
+    
+    sortedFiles.forEach(file => {
+        const pathParts = file.name.split('/');
+        let currentLevel = tree;
+        let currentPath = '';
+        
+        for (let i = 0; i < pathParts.length; i++) {
+            const part = pathParts[i];
+            currentPath = currentPath ? `${currentPath}/${part}` : part;
+            
+            let existingItem = currentLevel.find(item => item.name === part);
+            if (!existingItem) {
+                const isDirectory = i < pathParts.length - 1 || file.isDirectory;
+                existingItem = {
+                    name: part,
+                    fullPath: currentPath,
+                    isDirectory: isDirectory,
+                    children: [],
+                    originalFile: i === pathParts.length - 1 ? file : null
+                };
+                currentLevel.push(existingItem);
+            }
+            
+            if (i < pathParts.length - 1) {
+                currentLevel = existingItem.children;
+            }
+        }
+    });
+    
+    return tree;
+}
+
+function renderFileTreeItem(item) {
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = hasChildren ? 'expanded' : '';
+    const hasChildrenClass = hasChildren ? 'has-children' : '';
+    
+    const childrenHtml = hasChildren ? `
+        <ul class="file-tree-children">
+            ${item.children.map(child => renderFileTreeItem(child)).join('')}
+        </ul>
+    ` : '';
+    
+    const clickHandler = item.isDirectory ? 
+        `onclick="openDirectory('${item.fullPath}')"` : 
+        `onclick="openFile('${item.fullPath}')"`;
+    
+    return `
+        <li class="file-tree-item ${hasChildrenClass} ${isExpanded}">
+            <div class="file-item ${currentFile && currentFile.name === item.fullPath ? 'active' : ''} ${item.isDirectory ? 'directory' : ''}" 
+                 ${clickHandler}>
+                <i class="fas ${item.isDirectory ? 'fa-folder' : 'fa-file-alt'}"></i>
+                <div class="file-info">
+                    <div class="file-name">${item.name}</div>
+                    <div class="file-meta">${item.isDirectory ? 'Directory' : formatFileSize(item.originalFile?.size || 0)} • ${formatDate(item.originalFile?.lastModified || Date.now() / 1000)}</div>
+                </div>
             </div>
-        </div>
-    `).join('');
+            ${childrenHtml}
+        </li>
+    `;
 }
 
 async function openFile(filename) {
@@ -467,10 +568,30 @@ async function handleCreateDirectory(e) {
     }
 }
 
+function updateBreadcrumb() {
+    const pathParts = currentPath.split('/').filter(part => part);
+    let breadcrumbHtml = '<span class="breadcrumb-item" onclick="navigateToRoot()">Home</span>';
+    
+    let currentPathBuilt = '';
+    pathParts.forEach((part, index) => {
+        currentPathBuilt += (currentPathBuilt ? '/' : '') + part;
+        breadcrumbHtml += `<span class="breadcrumb-item" onclick="navigateToPath('${currentPathBuilt}')">${part}</span>`;
+    });
+    
+    breadcrumb.innerHTML = breadcrumbHtml;
+}
+
+function navigateToRoot() {
+    loadUserFiles('');
+}
+
+function navigateToPath(path) {
+    loadUserFiles(path);
+}
+
 function openDirectory(dirname) {
-    // For now, just show a notification that directory navigation is not implemented
-    showNotification('Directory navigation not yet implemented', 'info');
-    // TODO: Implement directory navigation
+    const newPath = currentPath ? `${currentPath}/${dirname}` : dirname;
+    loadUserFiles(newPath);
 }
 
 // UI update functions
@@ -498,12 +619,33 @@ function checkAuthentication() {
 
 // Utility functions
 function showNotification(message, type = 'info') {
-    notification.textContent = message;
-    notification.className = `notification ${type} show`;
+    // Clear any existing notifications first
+    notification.className = 'notification';
+    notification.textContent = '';
     
+    // Set the new notification
+    notification.textContent = message;
+    notification.className = `notification ${type}`;
+    
+    // Force a reflow to ensure the transition works
+    notification.offsetHeight;
+    
+    // Show the notification
+    notification.classList.add('show');
+    
+    // Auto-hide after 3 seconds
     setTimeout(() => {
-        notification.classList.remove('show');
+        hideNotification();
     }, 3000);
+}
+
+function hideNotification() {
+    notification.classList.remove('show');
+    // Clear the content after the transition
+    setTimeout(() => {
+        notification.textContent = '';
+        notification.className = 'notification';
+    }, 300);
 }
 
 function getCookie(name) {
@@ -541,6 +683,12 @@ function handleKeyboardShortcuts(e) {
         showCreateFileModal();
     }
     
+    // Ctrl/Cmd + F to search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        showSearchModal();
+    }
+    
     // Escape to close modals
     if (e.key === 'Escape') {
         if (authModal.classList.contains('show')) {
@@ -551,6 +699,9 @@ function handleKeyboardShortcuts(e) {
         }
         if (createDirectoryModal.classList.contains('show')) {
             closeCreateDirectoryModal();
+        }
+        if (searchModal.classList.contains('show')) {
+            closeSearchModal();
         }
     }
 }
@@ -575,3 +726,139 @@ window.addEventListener('beforeunload', function(e) {
         e.returnValue = '';
     }
 });
+
+// Search functionality
+function showSearchModal() {
+    searchModal.classList.add('show');
+    searchInput.focus();
+    searchInput.value = '';
+    searchResults.innerHTML = `
+        <div class="empty-search">
+            <i class="fas fa-search"></i>
+            <p>Start typing to search files and folders</p>
+        </div>
+    `;
+}
+
+function closeSearchModal() {
+    searchModal.classList.remove('show');
+    searchInput.value = '';
+    searchResults.innerHTML = '';
+}
+
+function handleSearchInput(e) {
+    const query = e.target.value.trim();
+    
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        performSearch(query);
+    }, 300);
+}
+
+function handleSearchKeydown(e) {
+    if (e.key === 'Escape') {
+        closeSearchModal();
+    } else if (e.key === 'Enter') {
+        const firstResult = searchResults.querySelector('.search-result-item');
+        if (firstResult) {
+            firstResult.click();
+        }
+    }
+}
+
+function performSearch(query) {
+    if (!query) {
+        searchResults.innerHTML = `
+            <div class="empty-search">
+                <i class="fas fa-search"></i>
+                <p>Start typing to search files and folders</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const results = fuzzySearch(allFiles, query);
+    
+    if (results.length === 0) {
+        searchResults.innerHTML = `
+            <div class="empty-search">
+                <i class="fas fa-search"></i>
+                <p>No files found matching "${query}"</p>
+            </div>
+        `;
+        return;
+    }
+    
+    searchResults.innerHTML = results.map(result => `
+        <div class="search-result-item" onclick="selectSearchResult('${result.fullPath}', ${result.isDirectory})">
+            <i class="fas ${result.isDirectory ? 'fa-folder' : 'fa-file-alt'}"></i>
+            <div class="search-result-info">
+                <div class="search-result-name">${highlightMatch(result.name, query)}</div>
+                <div class="search-result-path">${result.fullPath}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function fuzzySearch(files, query) {
+    const results = [];
+    const queryLower = query.toLowerCase();
+    
+    files.forEach(file => {
+        const nameLower = file.name.toLowerCase();
+        const pathLower = file.fullPath.toLowerCase();
+        
+        // Check if query matches file name or path
+        if (nameLower.includes(queryLower) || pathLower.includes(queryLower)) {
+            const score = calculateSearchScore(file, queryLower);
+            results.push({
+                ...file,
+                score: score
+            });
+        }
+    });
+    
+    // Sort by relevance score
+    return results.sort((a, b) => b.score - a.score).slice(0, 10);
+}
+
+function calculateSearchScore(file, query) {
+    const nameLower = file.name.toLowerCase();
+    const pathLower = file.fullPath.toLowerCase();
+    
+    let score = 0;
+    
+    // Exact name match gets highest score
+    if (nameLower === query) score += 100;
+    // Name starts with query
+    else if (nameLower.startsWith(query)) score += 50;
+    // Name contains query
+    else if (nameLower.includes(query)) score += 25;
+    
+    // Path contains query
+    if (pathLower.includes(query)) score += 10;
+    
+    // Directories get slight bonus
+    if (file.isDirectory) score += 5;
+    
+    return score;
+}
+
+function highlightMatch(text, query) {
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.replace(regex, '<span class="highlight">$1</span>');
+}
+
+function selectSearchResult(path, isDirectory) {
+    closeSearchModal();
+    
+    if (isDirectory) {
+        // Navigate to the directory
+        const pathParts = path.split('/');
+        const dirPath = pathParts.slice(0, -1).join('/');
+        loadUserFiles(dirPath);
+    } else {
+        // Open the file
+        openFile(path);
+    }
+}

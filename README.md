@@ -1,155 +1,49 @@
-# Web-Based Text Editor
+# Web Text Editor
 
-A modern, secure web-based text editor built with C++ backend and HTML/CSS/JavaScript frontend. Features user authentication, private file systems, and real-time editing capabilities.
+A modern web-based text editor with user authentication, private file systems, and real-time editing capabilities.
 
 ## Features
 
-### 🔐 User Authentication
-- Secure user registration and login
-- Password hashing with SHA-256 and salt
-- Session-based authentication with automatic timeout
-- Private user filesystems
+### ✅ Core Functionality
+- **User Authentication**: Secure registration and login system with password hashing
+- **Session Management**: Persistent sessions with automatic timeout
+- **Private File Systems**: Each user has their own isolated file storage
+- **File Operations**: Create, read, update, and delete files
+- **Directory Support**: Create and navigate directories
+- **Real-time Editing**: Auto-save functionality with visual indicators
+- **Modern UI**: Clean, responsive interface with smooth animations
 
-### 📁 File Management
-- Create, read, update, and delete files
-- Private file storage per user
-- File size and modification time tracking
-- Real-time file status indicators
+### ✅ Recent Fixes & Improvements
+- **Fixed Form Data Parsing**: Corrected issue where username and password were being mixed in file paths
+- **Enhanced User Persistence**: Added debug output and improved user data saving/loading
+- **Notification System**: Fixed persistent notifications and added proper auto-hide functionality
+- **UI Animations**: Added smooth transitions, hover effects, and micro-interactions
+- **Better Error Handling**: Improved error messages and user feedback
+- **Username Uniqueness**: Prevents duplicate usernames during registration
 
-### ✏️ Text Editor
-- Modern, responsive interface
-- Real-time editing with auto-save
-- Syntax highlighting ready
-- Keyboard shortcuts (Ctrl+S to save, Ctrl+N for new file)
-- Unsaved changes detection
-
-### 🎨 Modern UI/UX
-- Clean, professional design
-- Responsive layout for mobile and desktop
-- Smooth animations and transitions
-- Intuitive file browser sidebar
-- Toast notifications for user feedback
+### 🎨 UI/UX Features
+- **Smooth Animations**: Fade-in, slide, bounce, and pulse animations throughout the interface
+- **Hover Effects**: Interactive elements with scale, shadow, and color transitions
+- **Loading States**: Visual feedback during operations with spinning indicators
+- **Responsive Design**: Works on desktop and mobile devices
+- **Modern Styling**: Clean, professional appearance with consistent spacing and typography
+- **Keyboard Shortcuts**: Ctrl+S for save, Ctrl+N for new file, etc.
 
 ## Architecture
 
 ### Backend (C++)
-- **WebServer Class**: Main server implementation
-- **User Management**: Registration, authentication, session handling
-- **File System**: Private user directories, file operations
-- **HTTP Parser**: Custom HTTP request/response handling
-- **Security**: Password hashing, session tokens, input validation
+- **WebServer Class**: Main server implementation with HTTP request/response handling
+- **User Management**: Registration, login, session management, and user data persistence
+- **File System**: Private user directories with file and directory operations
+- **Security**: Password hashing with SHA-256 and salted passwords
+- **HTTP Parser**: Custom HTTP request parsing and response building
 
 ### Frontend (HTML/CSS/JavaScript)
-- **Modern UI**: Responsive design with CSS Grid/Flexbox
-- **Real-time Updates**: Live file status and auto-save
-- **Modal Dialogs**: Authentication and file creation forms
-- **File Browser**: Interactive sidebar with file list
-- **Keyboard Shortcuts**: Enhanced productivity features
-
-## Prerequisites
-
-- **C++17** compatible compiler (GCC 7+ or Clang 5+)
-- **OpenSSL** development libraries
-- **Make** build system
-
-## Installation
-
-### 1. Install Dependencies
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get update
-sudo apt-get install -y g++ make libssl-dev
-```
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install -y gcc-c++ make openssl-devel
-```
-
-**macOS:**
-```bash
-brew install openssl
-```
-
-### 2. Build the Project
-
-```bash
-# Clone or download the project
-cd Server
-
-# Build the server
-make
-
-# Or build with debug information
-make debug
-```
-
-### 3. Run the Server
-
-```bash
-# Run the server (defaults to port 8080)
-make run
-
-# Or run the executable directly
-./build/webserver
-```
-
-The server will start on `http://localhost:8080`
-
-## Usage
-
-### First Time Setup
-
-1. **Open your browser** and navigate to `http://localhost:8080`
-2. **Register a new account** by clicking "Login" then "Register"
-3. **Create your first file** using the "+" button in the sidebar
-4. **Start editing** - your files are automatically saved
-
-### Features Guide
-
-#### Authentication
-- **Register**: Create a new account with username and password
-- **Login**: Access your private file system
-- **Logout**: Securely end your session
-- **Session Timeout**: Automatic logout after 1 hour of inactivity
-
-#### File Operations
-- **Create File**: Click the "+" button or use Ctrl+N
-- **Open File**: Click on any file in the sidebar
-- **Save File**: Click "Save" button or use Ctrl+S
-- **Delete File**: Click "Delete" button (with confirmation)
-- **Auto-save**: Files are automatically saved after 2 seconds of inactivity
-
-#### Editor Features
-- **Real-time Status**: See "Saved" or "Unsaved" indicators
-- **Unsaved Changes Warning**: Browser warns before leaving with unsaved changes
-- **Keyboard Shortcuts**:
-  - `Ctrl+S` (or `Cmd+S` on Mac): Save current file
-  - `Ctrl+N` (or `Cmd+N` on Mac): Create new file
-  - `Escape`: Close modals
-
-## Project Structure
-
-```
-Server/
-├── backend/
-│   ├── include/
-│   │   └── server.hpp          # Server header with class definitions
-│   └── src/
-│       ├── main.cpp            # Entry point
-│       └── server.cpp          # Server implementation
-├── frontend/
-│   ├── index.html              # Main HTML file
-│   ├── style.css               # Modern CSS styles
-│   └── script.js               # Frontend JavaScript
-├── data/                       # User data directory (created automatically)
-│   ├── users.txt               # User account data
-│   └── users/                  # Private user filesystems
-├── build/                      # Build output directory
-├── Makefile                    # Build configuration
-└── README.md                   # This file
-```
+- **Modal System**: Login/register modals with smooth transitions
+- **File Browser**: Sidebar with file/directory listing and creation
+- **Text Editor**: Full-featured editor with syntax highlighting support
+- **Notification System**: Toast notifications with auto-hide and different types
+- **Responsive Layout**: Adaptive design for different screen sizes
 
 ## API Endpoints
 
@@ -158,108 +52,164 @@ Server/
 - `POST /api/login` - User login
 - `POST /api/logout` - User logout
 
-### File Management
-- `GET /api/files` - List user's files
+### File Operations
+- `GET /api/files` - List user files and directories
 - `GET /api/file?filename=<name>` - Get file content
 - `POST /api/save` - Save file content
 - `POST /api/create` - Create new file
-- `DELETE /api/delete?filename=<name>` - Delete file
+- `POST /api/create-dir` - Create new directory
+- `DELETE /api/delete?filename=<name>` - Delete file or directory
 
-### Static Files
-- `GET /` - Main application page
-- `GET /style.css` - CSS styles
-- `GET /script.js` - JavaScript code
+## Installation & Setup
 
-## Security Features
+### Prerequisites
+- C++17 compiler (GCC 7+ or Clang 5+)
+- OpenSSL development libraries
+- Make
 
-- **Password Hashing**: SHA-256 with random salt
-- **Session Management**: Secure session tokens with timeout
-- **Input Validation**: URL encoding/decoding, path sanitization
-- **Private Filesystems**: Users can only access their own files
-- **HTTP Security**: Proper headers and response codes
+### Build Instructions
+```bash
+# Clone the repository
+git clone <repository-url>
+cd Server
+
+# Build the project
+make
+
+# Run the server
+make run
+# or
+./build/webserver
+```
+
+### Dependencies Installation
+
+#### Ubuntu/Debian
+```bash
+sudo apt update
+sudo apt install build-essential libssl-dev
+```
+
+#### macOS
+```bash
+brew install openssl
+```
+
+#### Windows (WSL)
+```bash
+sudo apt update
+sudo apt install build-essential libssl-dev
+```
+
+## Usage
+
+1. **Start the Server**: Run `./build/webserver` to start the server on port 8080
+2. **Access the Application**: Open `http://localhost:8080` in your browser
+3. **Register/Login**: Create an account or log in with existing credentials
+4. **Create Files**: Use the "New File" button or Ctrl+N to create files
+5. **Create Directories**: Use the "New Directory" button to create folders
+6. **Edit Files**: Click on files to open them in the editor
+7. **Save Changes**: Use Ctrl+S or the auto-save feature
+
+## File Structure
+
+```
+Server/
+├── backend/
+│   ├── include/
+│   │   └── server.hpp          # Server class definition
+│   └── src/
+│       ├── main.cpp            # Entry point
+│       └── server.cpp          # Server implementation
+├── frontend/
+│   ├── index.html              # Main HTML file
+│   ├── style.css               # Styles and animations
+│   └── script.js               # Frontend JavaScript
+├── build/                      # Compiled binaries
+├── data/                       # User data storage
+├── Makefile                    # Build configuration
+├── test_server.sh              # Server testing script
+└── README.md                   # This file
+```
 
 ## Development
 
-### Building for Development
-
+### Building
 ```bash
-# Build with debug information
-make debug
-
-# Check OpenSSL installation
-make check-openssl
-
-# Clean build files
-make clean
+make clean    # Clean build artifacts
+make          # Build the project
+make run      # Build and run
 ```
 
-### Customization
+### Testing
+```bash
+# Run the automated test script
+./test_server.sh
 
-#### Changing the Port
-Edit `backend/src/main.cpp`:
-```cpp
-int main() {
-    start_server(8080);  // Change this port number
-    return 0;
-}
+# Manual testing
+curl -X POST http://localhost:8080/api/register \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=testuser&password=testpass"
 ```
 
-#### Modifying Session Timeout
-Edit `backend/src/server.cpp` in the `is_session_valid` function:
-```cpp
-if (now - it->second.last_activity > 3600) { // 1 hour timeout
-```
+### Debug Output
+The server includes comprehensive debug output for:
+- User registration and login
+- File and directory operations
+- Session management
+- Error conditions
 
-#### Adding File Types
-Edit `backend/src/server.cpp` in the `get_mime_type` function:
-```cpp
-if (ext == ".py") return "text/x-python";
-if (ext == ".js") return "application/javascript";
-```
+## Security Features
+
+- **Password Hashing**: SHA-256 with salt
+- **Session Tokens**: Secure random session generation
+- **User Isolation**: Private file systems per user
+- **Input Validation**: Proper form data parsing and validation
+- **Path Sanitization**: Prevents directory traversal attacks
+
+## Performance
+
+- **Efficient File Operations**: Minimal I/O operations
+- **Session Caching**: In-memory session storage
+- **Optimized Build**: Compiler optimizations enabled
+- **Responsive UI**: Smooth animations without performance impact
 
 ## Troubleshooting
 
 ### Common Issues
 
-**"OpenSSL not found" error:**
-```bash
-# Ubuntu/Debian
-sudo apt-get install libssl-dev
+1. **Port Already in Use**
+   ```bash
+   # Check what's using port 8080
+   lsof -i :8080
+   # Kill the process
+   kill <PID>
+   ```
 
-# Fedora/RHEL
-sudo dnf install openssl-devel
+2. **Build Errors**
+   ```bash
+   # Install missing dependencies
+   sudo apt install build-essential libssl-dev
+   # Clean and rebuild
+   make clean && make
+   ```
 
-# macOS
-brew install openssl
-```
+3. **Permission Errors**
+   ```bash
+   # Ensure data directory is writable
+   chmod 755 data/
+   ```
 
-**"Permission denied" when running:**
-```bash
-# Make sure the executable has proper permissions
-chmod +x build/webserver
-```
-
-**Port already in use:**
-```bash
-# Check what's using the port
-sudo netstat -tulpn | grep :8080
-
-# Kill the process or change the port in main.cpp
-```
-
-**Files not saving:**
-- Check that the `data` directory exists and is writable
-- Ensure the server has proper permissions to create user directories
+4. **User Data Not Persisting**
+   - Check debug output for user save/load operations
+   - Verify data directory permissions
+   - Check disk space
 
 ### Debug Mode
-
-Run with debug information:
-```bash
-make debug
-./build/webserver
-```
-
-This will provide more detailed error messages and logging.
+The server includes extensive debug output. Monitor the console for:
+- User registration/login messages
+- File operation confirmations
+- Error details and stack traces
 
 ## Contributing
 
@@ -273,13 +223,19 @@ This will provide more detailed error messages and logging.
 
 This project is open source and available under the MIT License.
 
-## Future Enhancements
+## Changelog
 
-- [ ] Syntax highlighting for different file types
-- [ ] File sharing between users
-- [ ] Collaborative editing
-- [ ] File versioning and history
-- [ ] Search and replace functionality
-- [ ] Multiple themes and customization
-- [ ] File upload/download capabilities
-- [ ] Database backend for better scalability 
+### Latest Updates
+- ✅ Fixed form data parsing for proper username/password separation
+- ✅ Enhanced user data persistence with debug output
+- ✅ Improved notification system with auto-hide
+- ✅ Added comprehensive UI animations and transitions
+- ✅ Fixed username uniqueness validation
+- ✅ Added loading states and better error handling
+- ✅ Improved responsive design and accessibility
+
+### Previous Versions
+- Initial implementation with basic file operations
+- Added user authentication and session management
+- Implemented directory support and file browser
+- Added real-time editing and auto-save functionality 
