@@ -58,17 +58,30 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
+    console.log('Initializing application...');
+    
+    // Initialize panels
+    initializePanels();
+    
     // Check if user is already authenticated
     const sessionToken = getCookie('session');
     if (sessionToken) {
+        console.log('Found existing session token, validating...');
         // Validate session with server
         validateSession(sessionToken);
+    } else {
+        console.log('No session token found');
     }
 
     // Warn if opened as file://
     if (window.location.protocol === 'file:') {
         alert('Please open this app via http://localhost:8080/ and not as a file:// URL. Authentication will not work otherwise.');
     }
+    
+    // Ensure editor is properly initialized
+    console.log('Editor element:', editor);
+    console.log('Editor disabled state:', editor.disabled);
+    console.log('Editor value:', editor.value);
 }
 
 function setupEventListeners() {
@@ -230,26 +243,40 @@ function logout() {
 
 // File management functions
 async function loadUserFiles(path = '') {
+    console.log('loadUserFiles called with path:', path);
     try {
         const url = path ? `/api/files?path=${encodeURIComponent(path)}` : '/api/files';
+        console.log('loadUserFiles: Fetching from URL:', url);
         const response = await fetch(url, {
             method: 'GET',
             credentials: 'include'
         });
         
+        console.log('loadUserFiles: Response status:', response.status);
         if (response.ok) {
             const data = await response.json();
+            console.log('loadUserFiles: Response data:', data);
             if (data.success) {
                 files = data.files || [];
                 allFiles = data.allFiles || []; // Store all files for search
                 currentPath = path;
+                console.log('loadUserFiles: Files loaded:', files);
+                console.log('loadUserFiles: Current path set to:', currentPath);
                 renderFileList();
                 updateBreadcrumb();
+            } else {
+                console.log('loadUserFiles: Backend returned success: false, message:', data.message);
+                showNotification(`Failed to load files: ${data.message}`, 'error');
             }
+        } else {
+            console.log('loadUserFiles: HTTP error, status:', response.status);
+            const errorText = await response.text();
+            console.log('loadUserFiles: Error response:', errorText);
+            showNotification(`Failed to load files: HTTP ${response.status}`, 'error');
         }
     } catch (error) {
-        console.error('Error loading files:', error);
-        showNotification('Failed to load files', 'error');
+        console.error('loadUserFiles: Exception occurred:', error);
+        showNotification('Failed to load files: Network error', 'error');
     }
 }
 
@@ -267,24 +294,42 @@ function renderFileList() {
         `;
         return;
     }
-    
     // Group files by directory structure
     const fileTree = buildFileTree(files);
-    
     fileList.innerHTML = `
         <ul class="file-tree">
             ${fileTree.map(item => renderFileTreeItem(item)).join('')}
         </ul>
     `;
     
-    // Add click handlers for tree expansion
-    document.querySelectorAll('.file-tree-item.has-children > .file-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const treeItem = this.closest('.file-tree-item');
-            treeItem.classList.toggle('expanded');
-        });
+    // Use event delegation to handle file/directory clicks
+    // Remove any existing event listeners by using a single listener on the fileList container
+    fileList.removeEventListener('click', handleFileTreeClick);
+    fileList.addEventListener('click', handleFileTreeClick);
+}
+
+// Event delegation handler for file tree clicks
+function handleFileTreeClick(e) {
+    const fileItem = e.target.closest('.file-item');
+    if (!fileItem) return;
+    
+    e.stopPropagation();
+    const treeItem = fileItem.closest('.file-tree-item');
+    const fullPath = fileItem.dataset.fullPath;
+    
+    console.log('File tree click:', {
+        fullPath: fullPath,
+        isDirectory: fileItem.classList.contains('directory'),
+        element: fileItem
     });
+    
+    if (fileItem.classList.contains('directory')) {
+        // Toggle expansion for directories
+        treeItem.classList.toggle('expanded');
+        openDirectory(fullPath);
+    } else {
+        openFile(fullPath);
+    }
 }
 
 function buildFileTree(files) {
@@ -334,21 +379,23 @@ function renderFileTreeItem(item) {
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = hasChildren ? 'expanded' : '';
     const hasChildrenClass = hasChildren ? 'has-children' : '';
-    
     const childrenHtml = hasChildren ? `
         <ul class="file-tree-children">
             ${item.children.map(child => renderFileTreeItem(child)).join('')}
         </ul>
     ` : '';
     
-    const clickHandler = item.isDirectory ? 
-        `onclick="openDirectory('${item.fullPath}')"` : 
-        `onclick="openFile('${item.fullPath}')"`;
+    console.log('Rendering file tree item:', {
+        name: item.name,
+        fullPath: item.fullPath,
+        isDirectory: item.isDirectory,
+        hasChildren: hasChildren
+    });
     
     return `
         <li class="file-tree-item ${hasChildrenClass} ${isExpanded}">
             <div class="file-item ${currentFile && currentFile.name === item.fullPath ? 'active' : ''} ${item.isDirectory ? 'directory' : ''}" 
-                 ${clickHandler}>
+                 data-full-path="${item.fullPath}">
                 <i class="fas ${item.isDirectory ? 'fa-folder' : 'fa-file-alt'}"></i>
                 <div class="file-info">
                     <div class="file-name">${item.name}</div>
@@ -361,16 +408,24 @@ function renderFileTreeItem(item) {
 }
 
 async function openFile(path) {
-    if (!path) return;
+    console.log('openFile called with path:', path);
+    if (!path) {
+        console.log('openFile: No path provided');
+        return;
+    }
     try {
-        const response = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
+        console.log('openFile: Fetching file content from:', `/api/file?filename=${encodeURIComponent(path)}`);
+        const response = await fetch(`/api/file?filename=${encodeURIComponent(path)}`, {
             method: 'GET',
             credentials: 'include'
         });
         
+        console.log('openFile: Response status:', response.status);
         if (response.ok) {
             const data = await response.json();
+            console.log('openFile: Response data:', data);
             if (data.success) {
+                console.log('openFile: Successfully loaded file, updating editor...');
                 currentFile = {
                     name: path,
                     content: decodeURIComponent(data.content),
@@ -386,21 +441,36 @@ async function openFile(path) {
                 deleteBtn.disabled = false;
                 hasUnsavedChanges = false;
                 
+                console.log('openFile: Editor updated, currentFile:', currentFile);
                 renderFileList(); // Update active state
                 editor.focus();
+            } else {
+                console.log('openFile: Backend returned success: false, message:', data.message);
+                showNotification(`Failed to open file: ${data.message}`, 'error');
             }
+        } else {
+            console.log('openFile: HTTP error, status:', response.status);
+            const errorText = await response.text();
+            console.log('openFile: Error response:', errorText);
+            showNotification(`Failed to open file: HTTP ${response.status}`, 'error');
         }
     } catch (error) {
-        console.error('Error opening file:', error);
-        showNotification('Failed to open file', 'error');
+        console.error('openFile: Exception occurred:', error);
+        showNotification('Failed to open file: Network error', 'error');
     }
 }
 
 function handleEditorChange() {
-    if (!currentFile) return;
+    console.log('handleEditorChange called, currentFile:', currentFile);
+    if (!currentFile) {
+        console.log('handleEditorChange: No current file, ignoring change');
+        return;
+    }
     
     const currentContent = editor.value;
     hasUnsavedChanges = currentContent !== currentFile.originalContent;
+    
+    console.log('handleEditorChange: Content changed, hasUnsavedChanges:', hasUnsavedChanges);
     
     if (hasUnsavedChanges) {
         fileStatus.textContent = 'Unsaved';
@@ -593,6 +663,7 @@ function updateUIForAuthenticatedUser() {
     userInfo.style.display = 'flex';
     usernameDisplay.textContent = currentUser;
     sidebar.style.display = 'flex';
+    showFilesPanel(); // Ensure the files panel is active and visible
 }
 
 function updateUIForUnauthenticatedUser() {
@@ -1113,8 +1184,9 @@ function setTopbarActive(btnId) {
         document.getElementById(btnId).classList.add('active');
     }
 }
-// On load, hide all panels and reset widths
-window.addEventListener('DOMContentLoaded', () => {
+
+// Initialize panels on app startup instead
+function initializePanels() {
     const sidebar = document.getElementById('sidebar');
     const filePanel = document.getElementById('filePanel');
     const vcsPanelSidebar = document.getElementById('vcsPanelSidebar');
@@ -1126,7 +1198,7 @@ window.addEventListener('DOMContentLoaded', () => {
     resizer.classList.remove('active');
     resizer.style.display = 'none';
     setTopbarActive(null);
-});
+}
 
 // --- Resizer Logic ---
 (function() {
