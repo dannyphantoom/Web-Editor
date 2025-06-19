@@ -9,30 +9,6 @@ let currentPath = ''; // Current directory path
 let allFiles = []; // All files for search functionality
 let searchTimeout = null; // For debounced search
 
-// --- Dragging state variables ---
-let isDragging = false;
-let startY = 0;
-let startHeight = 0;
-let startX = 0;
-let startWidth = 0;
-
-// --- Chat API Key Management ---
-let storedApiKey = null;
-let storedProvider = 'openai';
-let storedModel = 'gpt-3.5-turbo';
-
-// --- Agent Mode Toggle Logic ---
-let agentMode = false;
-const agentModeBtn = document.getElementById('agentModeBtn');
-if (agentModeBtn) {
-    agentModeBtn.onclick = function() {
-        agentMode = !agentMode;
-        agentModeBtn.classList.toggle('active', agentMode);
-        agentModeBtn.textContent = agentMode ? 'Agent Mode (On)' : 'Agent Mode';
-        document.getElementById('agentFileBrowserBtn')?.classList.toggle('hidden', agentMode);
-    };
-}
-
 // DOM elements
 const authModal = document.getElementById('authModal');
 const authForm = document.getElementById('authForm');
@@ -199,15 +175,9 @@ function setupEventListeners() {
         e.preventDefault();
         const message = chatInput.value.trim();
         if (!message) return;
-        
-        // Disable input while processing
-        chatInput.disabled = true;
-        
         await sendChatMessage(message);
-        
-        // Re-enable input after response
         chatInput.value = '';
-        chatInput.disabled = false;
+        chatInput.disabled = true;
         chatInput.focus();
     });
 }
@@ -531,7 +501,8 @@ async function openFile(path) {
                 editor.value = currentFile.content;
                 editor.disabled = false;
                 currentFileName.textContent = path;
-                updateFileStatus();
+                fileStatus.textContent = 'Saved';
+                fileStatus.className = 'file-status saved';
                 saveBtn.disabled = true;
                 deleteBtn.disabled = false;
                 hasUnsavedChanges = false;
@@ -567,8 +538,15 @@ function handleEditorChange() {
     
     console.log('handleEditorChange: Content changed, hasUnsavedChanges:', hasUnsavedChanges);
     
-    updateFileStatus();
-    saveBtn.disabled = !hasUnsavedChanges;
+    if (hasUnsavedChanges) {
+        fileStatus.textContent = 'Unsaved';
+        fileStatus.className = 'file-status unsaved';
+        saveBtn.disabled = false;
+    } else {
+        fileStatus.textContent = 'Saved';
+        fileStatus.className = 'file-status saved';
+        saveBtn.disabled = true;
+    }
     
     currentFile.content = currentContent;
 }
@@ -591,7 +569,8 @@ async function saveCurrentFile() {
             if (data.success) {
                 currentFile.originalContent = currentFile.content;
                 hasUnsavedChanges = false;
-                updateFileStatus();
+                fileStatus.textContent = 'Saved';
+                fileStatus.className = 'file-status saved';
                 saveBtn.disabled = true;
                 showNotification('File saved successfully', 'success');
             }
@@ -640,7 +619,8 @@ function closeCurrentFile() {
     editor.value = '';
     editor.disabled = true;
     currentFileName.textContent = 'No file selected';
-    updateFileStatus();
+    fileStatus.textContent = '';
+    fileStatus.className = 'file-status';
     saveBtn.disabled = true;
     deleteBtn.disabled = true;
     hasUnsavedChanges = false;
@@ -1346,87 +1326,27 @@ function showTerminalPanel() {
 function showChatPanel() {
     if (chatPanel.style.display === 'none' || !chatPanel.style.display) {
         chatPanel.style.display = 'flex';
-        // Check if we have a stored API key
-        const savedApiKey = sessionStorage.getItem('chatApiKey');
-        const savedProvider = sessionStorage.getItem('chatProvider') || 'openai';
-        
-        if (savedApiKey) {
-            storedApiKey = savedApiKey;
-            storedProvider = savedProvider;
-            document.getElementById('chatProvider').value = storedProvider;
-        } else {
-            // Show API key modal
-            showApiKeyModal();
-        }
-        
-        // Ensure model dropdown is synchronized with storedModel
-        const chatModelSelect = document.getElementById('chatModel');
-        if (chatModelSelect && storedModel) {
-            chatModelSelect.value = storedModel;
-        }
     } else {
         chatPanel.style.display = 'none';
     }
 }
 
-function showApiKeyModal() {
-    document.getElementById('apiKeyModal').classList.add('show');
-    document.getElementById('apiKeyInput').focus();
-}
-
-function closeApiKeyModal() {
-    document.getElementById('apiKeyModal').classList.remove('show');
-    document.getElementById('apiKeyInput').value = '';
-    // If no API key is set, hide the chat panel
-    if (!storedApiKey) {
-        hideChatPanel();
-    }
-}
-
-function saveApiKeyAndClose() {
-    const apiKey = document.getElementById('apiKeyInput').value.trim();
-    const provider = document.getElementById('apiKeyProvider').value;
-    const saveKey = document.getElementById('saveApiKey').checked;
-    
-    if (!apiKey) {
-        showNotification('Please enter an API key', 'error');
-        return;
-    }
-    
-    storedApiKey = apiKey;
-    storedProvider = provider;
-    document.getElementById('chatProvider').value = provider;
-    
-    if (saveKey) {
-        sessionStorage.setItem('chatApiKey', apiKey);
-        sessionStorage.setItem('chatProvider', provider);
-    }
-    
-    document.getElementById('apiKeyModal').classList.remove('show');
-    document.getElementById('apiKeyInput').value = '';
-    showNotification('API key saved', 'success');
-}
-
-function hideChatPanel() {
-    chatPanel.style.display = 'none';
-}
-
 // --- Chat API Integration ---
 async function sendChatMessage(message) {
-    if (!storedApiKey) {
-        addChatMessage('system', 'Please enter your API key first.');
-        showApiKeyModal();
+    const provider = document.getElementById('chatProvider').value;
+    const apiKey = document.getElementById('chatApiKey').value;
+    if (!apiKey) {
+        addChatMessage('system', 'Please enter your API key.');
         return;
     }
-    
     addChatMessage('user', message);
     addChatMessage('system', 'Thinking...');
     let responseText = '';
     try {
-        if (storedProvider === 'openai') {
-            responseText = await callOpenAIChatAPI(message, storedApiKey);
-        } else if (storedProvider === 'claude') {
-            responseText = await callClaudeChatAPI(message, storedApiKey);
+        if (provider === 'openai') {
+            responseText = await callOpenAIChatAPI(message, apiKey);
+        } else if (provider === 'claude') {
+            responseText = await callClaudeChatAPI(message, apiKey);
         } else {
             responseText = 'Unknown provider.';
         }
@@ -1447,11 +1367,7 @@ function removeLastSystemMessage() {
 
 // Placeholder API call functions
 async function callOpenAIChatAPI(message, apiKey) {
-    const model = storedModel || 'gpt-3.5-turbo';
-    console.log('=== API Call Debug ===');
-    console.log('storedModel variable:', storedModel);
-    console.log('Using model:', model);
-    console.log('Dropdown current value:', document.getElementById('chatModel')?.value);
+    const model = document.getElementById('chatModel').value || 'gpt-3.5-turbo';
     const endpoint = 'https://api.openai.com/v1/chat/completions';
     const headers = {
         'Content-Type': 'application/json',
@@ -1463,7 +1379,6 @@ async function callOpenAIChatAPI(message, apiKey) {
             { role: 'user', content: message }
         ]
     });
-    console.log('API request body:', body);
     const response = await fetch(endpoint, {
         method: 'POST',
         headers,
@@ -1473,9 +1388,6 @@ async function callOpenAIChatAPI(message, apiKey) {
         throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
-    console.log('API response:', data);
-    console.log('Response content:', data.choices?.[0]?.message?.content);
-    console.log('=== End API Call Debug ===');
     return data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content
         ? data.choices[0].message.content.trim()
         : '[OpenAI] No response.';
@@ -1486,491 +1398,23 @@ async function callClaudeChatAPI(message, apiKey) {
     return '[Claude] This is a placeholder response.';
 }
 
-// --- Enhanced Chat UI Logic ---
+// --- Chat UI Logic ---
 function addChatMessage(sender, text) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'chat-message ' + sender;
-    
-    // Add timestamp
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const timeSpan = document.createElement('span');
-    timeSpan.className = 'message-time';
-    timeSpan.textContent = timestamp;
-    
-    // Parse and format the message content
-    const formattedContent = parseMessageContent(text);
-    msgDiv.innerHTML = formattedContent;
-    msgDiv.appendChild(timeSpan);
-    
+    msgDiv.textContent = text;
     chatMessages.appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // Add event listeners for code block buttons
-    if (sender === 'assistant') {
-        const addButtons = msgDiv.querySelectorAll('.add-to-file-btn');
-        addButtons.forEach(btn => {
-            btn.addEventListener('click', function() {
-                const codeBlock = this.closest('.code-block');
-                const codeContent = codeBlock.querySelector('pre code').textContent;
-                const fileName = this.dataset.fileName || 'untitled';
-                addCodeToCurrentFile(codeContent, fileName);
-            });
-        });
-    }
 }
 
-function parseMessageContent(text) {
-    // Replace "Thinking..." with typing indicator
-    if (text === 'Thinking...') {
-        return `
-            <div class="typing-indicator">
-                <span>AI is thinking</span>
-                <div class="dots">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Parse code blocks (```language filename)
-    let processedText = text.replace(/```(\w+)?\s*([^\n]*)\n([\s\S]*?)```/g, function(match, language, filename, code) {
-        const lang = language || 'text';
-        const fileName = filename.trim() || `${lang}.${getFileExtension(lang)}`;
-        const highlightedCode = syntaxHighlight(code, lang);
-        const isCurrentFile = currentFile && currentFile.name === fileName;
-        
-        return `
-            <div class="code-block">
-                <div class="code-header">
-                    <span class="file-name">${fileName}</span>
-                    <button class="add-to-file-btn" data-file-name="${fileName}" ${!currentFile ? 'disabled' : ''}>
-                        ${isCurrentFile ? 'Add to Current File' : 'Add to File'}
-                    </button>
-                </div>
-                <pre><code>${highlightedCode}</code></pre>
-            </div>
-        `;
-    });
-    
-    // Parse inline code (`code`)
-    processedText = processedText.replace(/`([^`]+)`/g, '<span class="inline-code">$1</span>');
-    
-    // Convert line breaks to <br> tags
-    processedText = processedText.replace(/\n/g, '<br>');
-    
-    return processedText;
-}
-
-function getFileExtension(language) {
-    const extensions = {
-        'javascript': 'js',
-        'js': 'js',
-        'typescript': 'ts',
-        'ts': 'ts',
-        'html': 'html',
-        'css': 'css',
-        'python': 'py',
-        'py': 'py',
-        'java': 'java',
-        'cpp': 'cpp',
-        'c': 'c',
-        'csharp': 'cs',
-        'cs': 'cs',
-        'php': 'php',
-        'ruby': 'rb',
-        'go': 'go',
-        'rust': 'rs',
-        'rs': 'rs',
-        'swift': 'swift',
-        'kotlin': 'kt',
-        'scala': 'scala',
-        'r': 'r',
-        'sql': 'sql',
-        'bash': 'sh',
-        'shell': 'sh',
-        'sh': 'sh',
-        'yaml': 'yml',
-        'yml': 'yml',
-        'json': 'json',
-        'xml': 'xml',
-        'markdown': 'md',
-        'md': 'md'
+// Agent Mode toggle logic
+const agentModeBtn = document.getElementById('agentModeBtn');
+let agentMode = false;
+if (agentModeBtn) {
+    agentModeBtn.onclick = function() {
+        agentMode = !agentMode;
+        agentModeBtn.classList.toggle('active', agentMode);
+        agentModeBtn.textContent = agentMode ? 'Agent Mode (On)' : 'Agent Mode';
+        // Placeholder: Add agent mode logic here later
     };
-    return extensions[language.toLowerCase()] || 'txt';
-}
-
-function syntaxHighlight(code, language) {
-    // Basic syntax highlighting for common languages
-    let highlighted = code;
-    
-    switch (language.toLowerCase()) {
-        case 'javascript':
-        case 'js':
-            highlighted = highlightJavaScript(code);
-            break;
-        case 'html':
-            highlighted = highlightHTML(code);
-            break;
-        case 'css':
-            highlighted = highlightCSS(code);
-            break;
-        case 'python':
-        case 'py':
-            highlighted = highlightPython(code);
-            break;
-        case 'java':
-            highlighted = highlightJava(code);
-            break;
-        case 'cpp':
-            highlighted = highlightCpp(code);
-            break;
-        case 'c':
-            highlighted = highlightC(code);
-            break;
-        default:
-            // For other languages, just escape HTML
-            highlighted = escapeHtml(code);
-    }
-    
-    return highlighted;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function highlightJavaScript(code) {
-    return code
-        .replace(/\b(const|let|var|function|return|if|else|for|while|class|import|export|default|async|await|try|catch|finally|throw|new|this|super|extends|static|public|private|protected|interface|type|enum|namespace|module|require|from|as)\b/g, '<span class="keyword">$1</span>')
-        .replace(/\b(console|document|window|Math|Date|Array|Object|String|Number|Boolean|Promise|fetch|JSON|localStorage|sessionStorage)\b/g, '<span class="function">$1</span>')
-        .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>')
-        .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>')
-        .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-function highlightHTML(code) {
-    return code
-        .replace(/(&lt;\/?)([a-zA-Z][a-zA-Z0-9]*)([^&]*?)(&gt;)/g, '<span class="keyword">$1$2$3$4</span>')
-        .replace(/(["'])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-function highlightCSS(code) {
-    return code
-        .replace(/([a-zA-Z-]+)(?=\s*:)/g, '<span class="function">$1</span>')
-        .replace(/(["'])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/\b(\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|deg|rad|turn|s|ms)?)\b/g, '<span class="number">$1</span>')
-        .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-function highlightPython(code) {
-    return code
-        .replace(/\b(def|class|import|from|as|if|elif|else|for|while|try|except|finally|with|return|yield|pass|break|continue|raise|True|False|None|and|or|not|in|is|lambda|global|nonlocal|del|assert)\b/g, '<span class="keyword">$1</span>')
-        .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>')
-        .replace(/(#.*$)/gm, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-function highlightJava(code) {
-    return code
-        .replace(/\b(public|private|protected|static|final|abstract|class|interface|extends|implements|import|package|new|this|super|return|if|else|for|while|do|switch|case|default|try|catch|finally|throw|throws|break|continue|void|int|long|float|double|boolean|char|byte|short|String|Object|null|true|false)\b/g, '<span class="keyword">$1</span>')
-        .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>')
-        .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>')
-        .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-function highlightCpp(code) {
-    return code
-        .replace(/\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|class|namespace|template|typename|virtual|public|private|protected|friend|inline|explicit|mutable|operator|this|new|delete|true|false|nullptr|using|std|cout|cin|endl|string|vector|map|set|list|queue|stack|priority_queue|unique_ptr|shared_ptr|weak_ptr|make_unique|make_shared|move|forward|decltype|constexpr|noexcept|override|final|alignas|alignof|char16_t|char32_t|const_cast|dynamic_cast|reinterpret_cast|static_cast|typeid|type_info|wchar_t)\b/g, '<span class="keyword">$1</span>')
-        .replace(/\b(printf|scanf|malloc|free|calloc|realloc|strcpy|strcat|strlen|strcmp|fopen|fclose|fread|fwrite|fprintf|fscanf|getchar|putchar|gets|puts|atoi|atof|itoa|sprintf|sscanf|memcpy|memmove|memset|memcmp|qsort|bsearch|rand|srand|time|clock|exit|abort|assert|setjmp|longjmp|va_start|va_arg|va_end|va_copy)\b/g, '<span class="function">$1</span>')
-        .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>')
-        .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>')
-        .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-function highlightC(code) {
-    return code
-        .replace(/\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|inline|restrict|_Bool|_Complex|_Imaginary)\b/g, '<span class="keyword">$1</span>')
-        .replace(/\b(printf|scanf|malloc|free|calloc|realloc|strcpy|strcat|strlen|strcmp|fopen|fclose|fread|fwrite|fprintf|fscanf|getchar|putchar|gets|puts|atoi|atof|itoa|sprintf|sscanf|memcpy|memmove|memset|memcmp|qsort|bsearch|rand|srand|time|clock|exit|abort|assert|setjmp|longjmp|va_start|va_arg|va_end|va_copy)\b/g, '<span class="function">$1</span>')
-        .replace(/\b(NULL|true|false|TRUE|FALSE|EOF|BUFSIZ|FILENAME_MAX|FOPEN_MAX|L_tmpnam|TMP_MAX|_IOFBF|_IOLBF|_IONBF|SEEK_CUR|SEEK_END|SEEK_SET|EXIT_FAILURE|EXIT_SUCCESS|RAND_MAX|CLOCKS_PER_SEC)\b/g, '<span class="number">$1</span>')
-        .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-        .replace(/\b(\d+(?:\.\d+)?(?:[uU]?[lL]?[lL]?|[uU]?[lL]?[lL]?[uU]?))\b/g, '<span class="number">$1</span>')
-        .replace(/\b(0[xX][0-9a-fA-F]+(?:[uU]?[lL]?[lL]?|[uU]?[lL]?[lL]?[uU]?))\b/g, '<span class="number">$1</span>')
-        .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>')
-        .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>')
-        .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
-}
-
-async function addCodeToCurrentFile(codeContent, fileName) {
-    if (!currentFile) {
-        showNotification('No file is currently open. Please open a file first.', 'error');
-        return;
-    }
-    
-    try {
-        // Get current editor content
-        const currentContent = editor.value;
-        
-        // Add the code to the end of the current file
-        const newContent = currentContent + '\n\n' + codeContent;
-        
-        // Update the editor
-        editor.value = newContent;
-        
-        // Mark as unsaved
-        hasUnsavedChanges = true;
-        updateFileStatus();
-        
-        // Show success notification
-        showNotification(`Code from ${fileName} added to current file. Don't forget to save!`, 'success');
-        
-        // Trigger change event
-        editor.dispatchEvent(new Event('input'));
-        
-    } catch (error) {
-        showNotification('Failed to add code to file: ' + error.message, 'error');
-    }
-}
-
-function updateFileStatus() {
-    if (!currentFile) {
-        fileStatus.textContent = '';
-        fileStatus.className = 'file-status';
-        return;
-    }
-    
-    if (hasUnsavedChanges) {
-        fileStatus.textContent = '● Unsaved';
-        fileStatus.className = 'file-status unsaved';
-    } else {
-        fileStatus.textContent = '✓ Saved';
-        fileStatus.className = 'file-status saved';
-    }
-}
-
-// --- File Upload Logic ---
-function triggerFileUpload() {
-    document.getElementById('fileUploadInput').click();
-}
-function triggerFolderUpload() {
-    document.getElementById('folderUploadInput').click();
-}
-document.getElementById('fileUploadInput').addEventListener('change', handleFileUpload);
-document.getElementById('folderUploadInput').addEventListener('change', handleFolderUpload);
-async function handleFileUpload(e) {
-    const files = e.target.files;
-    if (!files.length) return;
-    for (const file of files) {
-        await uploadFileToServer(file, currentPath);
-    }
-    loadUserFiles(currentPath);
-}
-async function handleFolderUpload(e) {
-    const files = e.target.files;
-    if (!files.length) return;
-    for (const file of files) {
-        // file.webkitRelativePath gives the folder structure
-        await uploadFileToServer(file, currentPath, file.webkitRelativePath);
-    }
-    loadUserFiles(currentPath);
-}
-async function uploadFileToServer(file, path, relativePath = null) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', path || '');
-    if (relativePath) formData.append('relativePath', relativePath);
-    await fetch('/api/upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-    });
-}
-
-// --- Chat File Attachment Logic ---
-const chatFileInput = document.getElementById('chatFileInput');
-const chatAttachments = document.getElementById('chatAttachments');
-let attachedFiles = [];
-chatFileInput.addEventListener('change', function(e) {
-    attachedFiles = Array.from(e.target.files);
-    renderChatAttachments();
-});
-function renderChatAttachments() {
-    if (attachedFiles.length === 0) {
-        chatAttachments.style.display = 'none';
-        chatAttachments.innerHTML = '';
-        return;
-    }
-    chatAttachments.style.display = 'block';
-    chatAttachments.innerHTML = attachedFiles.map(f => `<div class='chat-attachment-item'>${f.name} (${formatFileSize(f.size)})</div>`).join('');
-}
-
-// --- Agent File Browser Modal Logic ---
-const agentFileModal = document.getElementById('agentFileModal');
-const agentFileTree = document.getElementById('agentFileTree');
-const agentFileEditor = document.getElementById('agentFileEditor');
-const agentFilePath = document.getElementById('agentFilePath');
-const agentFileSaveBtn = document.getElementById('agentFileSaveBtn');
-let agentCurrentFile = null;
-
-function showAgentFileBrowser() {
-    if (!agentMode) return;
-    agentFileModal.classList.add('show');
-    agentFileEditor.value = '';
-    agentFileEditor.disabled = true;
-    agentFilePath.textContent = '';
-    agentFileSaveBtn.disabled = true;
-    agentCurrentFile = null;
-    loadAgentFileTree();
-}
-function closeAgentFileModal() {
-    agentFileModal.classList.remove('show');
-}
-async function loadAgentFileTree() {
-    // Reuse loadUserFiles logic but fetch all files for the agent
-    try {
-        const response = await fetch('/api/files', {
-            method: 'GET',
-            credentials: 'include'
-        });
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                const files = data.allFiles || [];
-                const fileTree = buildFileTree(files);
-                agentFileTree.innerHTML = `<ul class='file-tree'>${fileTree.map(item => renderAgentFileTreeItem(item)).join('')}</ul>`;
-                agentFileTree.removeEventListener('click', handleAgentFileTreeClick);
-                agentFileTree.addEventListener('click', handleAgentFileTreeClick);
-            } else {
-                agentFileTree.innerHTML = '<div style="color:#e11d48">Failed to load files</div>';
-            }
-        }
-    } catch (e) {
-        agentFileTree.innerHTML = '<div style="color:#e11d48">Failed to load files</div>';
-    }
-}
-function renderAgentFileTreeItem(item) {
-    const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = hasChildren ? 'expanded' : '';
-    const hasChildrenClass = hasChildren ? 'has-children' : '';
-    const childrenHtml = hasChildren ? `<ul class='file-tree-children'>${item.children.map(child => renderAgentFileTreeItem(child)).join('')}</ul>` : '';
-    return `
-        <li class='file-tree-item ${hasChildrenClass} ${isExpanded}'>
-            <div class='file-item ${agentCurrentFile && agentCurrentFile.name === item.fullPath ? 'active' : ''} ${item.isDirectory ? 'directory' : ''}' data-full-path='${item.fullPath}'>
-                <i class='fas ${item.isDirectory ? 'fa-folder' : 'fa-file-alt'}'></i>
-                <span>${item.name}</span>
-            </div>
-            ${childrenHtml}
-        </li>
-    `;
-}
-function handleAgentFileTreeClick(e) {
-    const fileItem = e.target.closest('.file-item');
-    if (!fileItem) return;
-    e.stopPropagation();
-    const treeItem = fileItem.closest('.file-tree-item');
-    const fullPath = fileItem.dataset.fullPath;
-    if (fileItem.classList.contains('directory')) {
-        treeItem.classList.toggle('expanded');
-    } else {
-        openAgentFile(fullPath);
-    }
-}
-async function openAgentFile(path) {
-    if (!path) return;
-    try {
-        const response = await fetch(`/api/file?filename=${encodeURIComponent(path)}`, {
-            method: 'GET',
-            credentials: 'include'
-        });
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                agentCurrentFile = {
-                    name: path,
-                    content: decodeURIComponent(data.content),
-                    originalContent: decodeURIComponent(data.content)
-                };
-                agentFileEditor.value = agentCurrentFile.content;
-                agentFileEditor.disabled = !agentMode;
-                agentFilePath.textContent = path;
-                agentFileSaveBtn.disabled = !agentMode;
-            } else {
-                agentFileEditor.value = '';
-                agentFilePath.textContent = 'Failed to open file';
-                agentFileSaveBtn.disabled = true;
-            }
-        }
-    } catch (e) {
-        agentFileEditor.value = '';
-        agentFilePath.textContent = 'Failed to open file';
-        agentFileSaveBtn.disabled = true;
-    }
-}
-agentFileEditor.addEventListener('input', function() {
-    if (!agentCurrentFile) return;
-    agentCurrentFile.content = agentFileEditor.value;
-});
-async function saveAgentFile() {
-    if (!agentCurrentFile || !agentMode) return;
-    try {
-        const response = await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            credentials: 'include',
-            body: `filename=${encodeURIComponent(agentCurrentFile.name)}&content=${encodeURIComponent(agentCurrentFile.content)}`
-        });
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                agentCurrentFile.originalContent = agentCurrentFile.content;
-                showNotification('File saved (Agent)', 'success');
-            } else {
-                showNotification('Failed to save file (Agent)', 'error');
-            }
-        }
-    } catch (e) {
-        showNotification('Failed to save file (Agent)', 'error');
-    }
-}
-
-// Update provider selection to also update stored provider
-document.getElementById('chatProvider').addEventListener('change', function() {
-    storedProvider = this.value;
-    if (sessionStorage.getItem('chatApiKey')) {
-        sessionStorage.setItem('chatProvider', storedProvider);
-    }
-});
-
-// Update model selection (separate from provider)
-document.getElementById('chatModel').addEventListener('change', function() {
-    storedModel = this.value;
-    console.log('Model changed to:', storedModel);
-    console.log('Dropdown value:', this.value);
-    console.log('Stored model after change:', storedModel);
-    // Don't save model to session storage as it's not sensitive
-});
-
-// Add agent file browser button to chat panel (if not present)
-if (!document.getElementById('agentFileBrowserBtn')) {
-    const btn = document.createElement('button');
-    btn.id = 'agentFileBrowserBtn';
-    btn.className = 'btn btn-secondary';
-    btn.textContent = 'Browse Files';
-    btn.style.marginLeft = '0.5em';
-    btn.onclick = showAgentFileBrowser;
-    btn.classList.add('hidden');
-    document.querySelector('.chat-input-bar').appendChild(btn);
 }

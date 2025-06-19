@@ -25,6 +25,9 @@ struct User {
     std::string session_token;
     time_t last_activity;
     std::string filesystem_path;
+    std::string api_key;
+    std::string api_provider;
+    std::string api_model;
 };
 
 // Version control structures
@@ -128,6 +131,10 @@ private:
     
     // Route handlers
     HttpResponse handle_static_file(const std::string& path);
+    HttpResponse handle_auth(const HttpRequest& request);
+    HttpResponse handle_login_internal(const std::string& username, const std::string& password);
+    HttpResponse handle_register_internal(const std::string& username, const std::string& password);
+    HttpResponse handle_validate_session(const HttpRequest& request);
     HttpResponse handle_login(const HttpRequest& request);
     HttpResponse handle_register(const HttpRequest& request);
     HttpResponse handle_logout(const HttpRequest& request);
@@ -144,6 +151,8 @@ private:
     HttpResponse handle_checkout(const HttpRequest& request);
     HttpResponse handle_create_branch(const HttpRequest& request);
     HttpResponse handle_switch_branch(const HttpRequest& request);
+    HttpResponse handle_save_api_key(const HttpRequest& request);
+    HttpResponse handle_get_api_key(const HttpRequest& request);
     HttpResponse handle_index();
 
 public:

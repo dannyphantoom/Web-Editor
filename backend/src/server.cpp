@@ -736,6 +736,24 @@ void WebServer::load_users() {
                 user.last_activity = time(nullptr);
             }
             
+            // Load API key fields (optional, for backward compatibility)
+            if (std::getline(line_stream, user.api_key, '|')) {
+                if (std::getline(line_stream, user.api_provider, '|')) {
+                    if (std::getline(line_stream, user.api_model, '|')) {
+                        // All API key fields present
+                    } else {
+                        user.api_model = "gpt-3.5-turbo"; // Default
+                    }
+                } else {
+                    user.api_provider = "openai"; // Default
+                    user.api_model = "gpt-3.5-turbo"; // Default
+                }
+            } else {
+                user.api_key = ""; // Default
+                user.api_provider = "openai"; // Default
+                user.api_model = "gpt-3.5-turbo"; // Default
+            }
+            
             users[user.username] = user;
             user_count++;
             std::cout << "Loaded user: " << user.username << std::endl;
@@ -766,7 +784,8 @@ void WebServer::save_users() {
     for (const auto& pair : users) {
         const User& user = pair.second;
         file << user.username << "|" << user.password_hash << "|" 
-             << user.filesystem_path << "|" << user.last_activity << "\n";
+             << user.filesystem_path << "|" << user.last_activity << "|"
+             << user.api_key << "|" << user.api_provider << "|" << user.api_model << "\n";
         user_count++;
         std::cout << "Saved user: " << user.username << std::endl;
     }
@@ -821,6 +840,10 @@ void WebServer::start() {
             response = handle_login(request);
         } else if (request.path == "/api/register" && request.method == "POST") {
             response = handle_register(request);
+        } else if (request.path == "/api/auth" && request.method == "POST") {
+            response = handle_auth(request);
+        } else if (request.path == "/api/validate-session" && request.method == "POST") {
+            response = handle_validate_session(request);
         } else if (request.path == "/api/logout" && request.method == "POST") {
             response = handle_logout(request);
         } else if (request.path == "/api/files" && request.method == "GET") {
@@ -849,6 +872,10 @@ void WebServer::start() {
             response = handle_create_branch(request);
         } else if (request.path == "/api/switch-branch" && request.method == "POST") {
             response = handle_switch_branch(request);
+        } else if (request.path == "/api/save-api-key" && request.method == "POST") {
+            response = handle_save_api_key(request);
+        } else if (request.path == "/api/get-api-key" && request.method == "GET") {
+            response = handle_get_api_key(request);
         } else if (request.method == "GET") {
             response = handle_static_file(request.path);
         } else {
@@ -1528,4 +1555,227 @@ HttpResponse WebServer::handle_upload_file(const HttpRequest& request) {
 
     return {200, "OK", {{"Content-Type", "application/json"}},
             "{\"success\": true, \"message\": \"File uploaded\"}"};
+}
+
+HttpResponse WebServer::handle_auth(const HttpRequest& request) {
+    std::cout << "Auth request received" << std::endl;
+    std::cout << "Request body: " << request.body << std::endl;
+    
+    // Parse JSON request body
+    std::string body = request.body;
+    std::string username, password, action;
+    
+    // Simple JSON parsing for the expected format
+    // Expected format: {"username":"user","password":"pass","action":"login"}
+    if (body.find("\"username\"") != std::string::npos) {
+        size_t username_start = body.find("\"username\"") + 12;
+        size_t username_end = body.find("\"", username_start);
+        if (username_end != std::string::npos) {
+            username = body.substr(username_start, username_end - username_start);
+        }
+    }
+    
+    if (body.find("\"password\"") != std::string::npos) {
+        size_t password_start = body.find("\"password\"") + 12;
+        size_t password_end = body.find("\"", password_start);
+        if (password_end != std::string::npos) {
+            password = body.substr(password_start, password_end - password_start);
+        }
+    }
+    
+    if (body.find("\"action\"") != std::string::npos) {
+        size_t action_start = body.find("\"action\"") + 10;
+        size_t action_end = body.find("\"", action_start);
+        if (action_end != std::string::npos) {
+            action = body.substr(action_start, action_end - action_start);
+        }
+    }
+    
+    std::cout << "Parsed auth data - username: " << username << ", action: " << action << std::endl;
+    
+    if (action == "login") {
+        return handle_login_internal(username, password);
+    } else if (action == "register") {
+        return handle_register_internal(username, password);
+    } else {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid action\"}"};
+    }
+}
+
+HttpResponse WebServer::handle_login_internal(const std::string& username, const std::string& password) {
+    if (username.empty() || password.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Username and password required\"}"};
+    }
+    
+    auto it = users.find(username);
+    if (it == users.end()) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid username or password\"}"};
+    }
+    
+    if (!verify_password(password, it->second.password_hash)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid username or password\"}"};
+    }
+    
+    // Generate new session token
+    std::string token = generate_session_token();
+    Session session;
+    session.token = token;
+    session.username = username;
+    session.created = time(nullptr);
+    session.last_activity = time(nullptr);
+    
+    sessions[token] = session;
+    it->second.session_token = token;
+    it->second.last_activity = time(nullptr);
+    
+    std::string response = "{\"success\": true, \"message\": \"Login successful\", \"token\": \"" + token + "\"}";
+    return {200, "OK", {{"Content-Type", "application/json"}, {"Set-Cookie", "session=" + token + "; Path=/; HttpOnly"}}, response};
+}
+
+HttpResponse WebServer::handle_register_internal(const std::string& username, const std::string& password) {
+    if (username.empty() || password.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Username and password required\"}"};
+    }
+    
+    if (users.find(username) != users.end()) {
+        return {409, "Conflict", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Username already exists\"}"};
+    }
+    
+    // Create new user
+    User user;
+    user.username = username;
+    user.password_hash = hash_password(password);
+    user.session_token = "";
+    user.last_activity = time(nullptr);
+    user.filesystem_path = create_user_filesystem(username);
+    
+    users[username] = user;
+    
+    // Generate session token for new user
+    std::string token = generate_session_token();
+    Session session;
+    session.token = token;
+    session.username = username;
+    session.created = time(nullptr);
+    session.last_activity = time(nullptr);
+    
+    sessions[token] = session;
+    user.session_token = token;
+    users[username] = user;
+    
+    std::string response = "{\"success\": true, \"message\": \"Registration successful\", \"token\": \"" + token + "\"}";
+    return {200, "OK", {{"Content-Type", "application/json"}, {"Set-Cookie", "session=" + token + "; Path=/; HttpOnly"}}, response};
+}
+
+HttpResponse WebServer::handle_validate_session(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    
+    // If token not found in cookies, try to extract from JSON body
+    if (token.empty()) {
+        std::string body = request.body;
+        if (body.find("\"token\"") != std::string::npos) {
+            size_t token_start = body.find("\"token\"") + 9;
+            size_t token_end = body.find("\"", token_start);
+            if (token_end != std::string::npos) {
+                token = body.substr(token_start, token_end - token_start);
+            }
+        }
+    }
+    
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    std::string response = "{\"success\": true, \"message\": \"Session is valid\", \"username\": \"" + username + "\"}";
+    return {200, "OK", {{"Content-Type", "application/json"}}, response};
+}
+
+HttpResponse WebServer::handle_save_api_key(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    // Parse JSON request body
+    std::string body = request.body;
+    std::string api_key, provider, model;
+    
+    // Simple JSON parsing
+    if (body.find("\"api_key\"") != std::string::npos) {
+        size_t key_start = body.find("\"api_key\"") + 11;
+        size_t key_end = body.find("\"", key_start);
+        if (key_end != std::string::npos) {
+            api_key = body.substr(key_start, key_end - key_start);
+        }
+    }
+    
+    if (body.find("\"provider\"") != std::string::npos) {
+        size_t provider_start = body.find("\"provider\"") + 12;
+        size_t provider_end = body.find("\"", provider_start);
+        if (provider_end != std::string::npos) {
+            provider = body.substr(provider_start, provider_end - provider_start);
+        }
+    }
+    
+    if (body.find("\"model\"") != std::string::npos) {
+        size_t model_start = body.find("\"model\"") + 9;
+        size_t model_end = body.find("\"", model_start);
+        if (model_end != std::string::npos) {
+            model = body.substr(model_start, model_end - model_start);
+        }
+    }
+    
+    if (api_key.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"API key required\"}"};
+    }
+    
+    // Update user's API key information
+    auto it = users.find(username);
+    if (it != users.end()) {
+        it->second.api_key = api_key;
+        it->second.api_provider = provider;
+        it->second.api_model = model;
+        save_users(); // Save to disk
+    }
+    
+    return {200, "OK", {{"Content-Type", "application/json"}}, 
+            "{\"success\": true, \"message\": \"API key saved successfully\"}"};
+}
+
+HttpResponse WebServer::handle_get_api_key(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    auto it = users.find(username);
+    if (it == users.end()) {
+        return {404, "Not Found", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"User not found\"}"};
+    }
+    
+    std::string response = "{\"success\": true, \"api_key\": \"" + it->second.api_key + 
+                          "\", \"provider\": \"" + it->second.api_provider + 
+                          "\", \"model\": \"" + it->second.api_model + "\"}";
+    
+    return {200, "OK", {{"Content-Type", "application/json"}}, response};
 }
