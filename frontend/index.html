@@ -42,6 +42,8 @@
         <button class="btn btn-topbar" id="showFilesBtn" onclick="showFilesPanel()"><i class="fas fa-folder"></i> Files</button>
         <button class="btn btn-topbar" id="showVCSBtn" onclick="showVCSPanel()"><i class="fas fa-code-branch"></i> Version Control</button>
         <button class="btn btn-topbar" id="showSearchBtn" onclick="showSearchModal()"><i class="fas fa-search"></i> Search</button>
+        <button class="btn btn-topbar" id="showTerminalBtn" onclick="showTerminalPanel()"><i class="fas fa-terminal"></i> Terminal</button>
+        <button class="btn btn-topbar" id="showChatBtn" onclick="showChatPanel()"><i class="fas fa-comments"></i> Chat</button>
     </div>
 
     <!-- Main Application -->
@@ -108,21 +110,34 @@
                 <!-- Version Control Panel (in sidebar) -->
                 <div id="vcsPanelSidebar" style="display: none;">
                     <div class="vcs-section" id="vcsSection">
-                        <div class="vcs-status" id="vcsStatus">Not tracked</div>
-                        <div class="vcs-actions">
-                            <button class="btn btn-xs" id="initRepoBtn" onclick="showInitRepoModal()">Init</button>
-                            <button class="btn btn-xs" id="commitBtn" onclick="showCommitModal()" disabled>Commit</button>
-                            <button class="btn btn-xs" id="branchBtn" onclick="showBranchModal()" disabled>Branch</button>
-                            <button class="btn btn-xs" id="logBtn" onclick="showLogModal()" disabled>Log</button>
+                        <div class="vcs-header">
+                            <i class="fas fa-code-branch"></i> <span>Version Control</span>
                         </div>
-                        <div class="vcs-branch" id="vcsBranch"></div>
+                        <div class="vcs-status-row">
+                            <i class="fas fa-database"></i> <span id="vcsStatus">Not tracked</span>
+                        </div>
+                        <div class="vcs-branch-row">
+                            <i class="fas fa-code-branch"></i> <span id="vcsBranch"></span>
+                        </div>
+                        <div class="vcs-path-row">
+                            <i class="fas fa-folder-open"></i> <span id="vcsCurrentPath"></span>
+                        </div>
+                        <div class="vcs-file-row">
+                            <i class="fas fa-file-alt"></i> <span id="vcsCurrentFile"></span>
+                        </div>
+                        <div class="vcs-actions">
+                            <button class="btn btn-xs" id="initRepoBtn" onclick="showInitRepoModal()"><i class="fas fa-plus-circle"></i> Init</button>
+                            <button class="btn btn-xs" id="commitBtn" onclick="showCommitModal()" disabled><i class="fas fa-save"></i> Commit</button>
+                            <button class="btn btn-xs" id="branchBtn" onclick="showBranchModal()" disabled><i class="fas fa-code-branch"></i> Branch</button>
+                            <button class="btn btn-xs" id="logBtn" onclick="showLogModal()" disabled><i class="fas fa-history"></i> Log</button>
+                        </div>
                     </div>
                 </div>
             </aside>
             <!-- Resizer -->
             <div id="panelResizer" class="panel-resizer" style="display: none;"></div>
-            <!-- Editor Area -->
-            <section class="editor-area">
+            <!-- Editor Area + Chat Panel -->
+            <section class="editor-area" id="editorArea">
                 <div class="editor-header">
                     <div class="file-info">
                         <span id="currentFileName">No file selected</span>
@@ -142,8 +157,26 @@
                 <div class="editor-container">
                     <textarea id="editor" placeholder="Select a file to start editing..." disabled></textarea>
                 </div>
+                <!-- Chat Panel (Right) -->
+                <div id="chatPanel" class="chat-panel" style="display: none;">
+                    <div class="chat-header"><i class="fas fa-comments"></i> Chat</div>
+                    <div class="chat-messages" id="chatMessages"></div>
+                    <form class="chat-input-bar" id="chatInputForm">
+                        <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off" />
+                        <button type="submit"><i class="fas fa-paper-plane"></i></button>
+                    </form>
+                    <div id="chatResizer" class="vertical-resizer"></div>
+                </div>
             </section>
         </main>
+        <!-- Terminal Panel (Bottom) -->
+        <div id="terminalPanel" class="terminal-panel" style="display: none;">
+            <div class="terminal-header"><i class="fas fa-terminal"></i> Terminal</div>
+            <div class="terminal-body" id="terminalBody">
+                <div class="terminal-placeholder">Terminal coming soon...</div>
+            </div>
+            <div id="terminalResizer" class="horizontal-resizer"></div>
+        </div>
     </div>
 
     <!-- Create File Modal -->

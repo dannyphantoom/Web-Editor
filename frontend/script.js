@@ -49,6 +49,15 @@ const branchForm = document.getElementById('branchForm');
 const branchName = document.getElementById('branchName');
 const logModal = document.getElementById('logModal');
 const logHistory = document.getElementById('logHistory');
+const terminalPanel = document.getElementById('terminalPanel');
+const terminalResizer = document.getElementById('terminalResizer');
+const chatPanel = document.getElementById('chatPanel');
+const chatResizer = document.getElementById('chatResizer');
+const chatMessages = document.getElementById('chatMessages');
+const chatInputForm = document.getElementById('chatInputForm');
+const chatInput = document.getElementById('chatInput');
+const vcsCurrentPath = document.getElementById('vcsCurrentPath');
+const vcsCurrentFile = document.getElementById('vcsCurrentFile');
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -114,6 +123,68 @@ function setupEventListeners() {
     // VCS modals
     commitForm.addEventListener('submit', handleCommitSubmit);
     branchForm.addEventListener('submit', handleBranchSubmit);
+
+    // Terminal panel toggle
+    terminalResizer.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startY = e.clientY;
+        startHeight = terminalPanel.offsetHeight;
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        const dy = startY - e.clientY;
+        let newHeight = startHeight + dy;
+        newHeight = Math.max(120, Math.min(window.innerHeight * 0.6, newHeight));
+        terminalPanel.style.height = newHeight + 'px';
+    });
+    window.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+
+    // Chat panel toggle
+    chatResizer.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startX = e.clientX;
+        startWidth = chatPanel.offsetWidth;
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        const dx = startX - e.clientX;
+        let newWidth = startWidth + dx;
+        newWidth = Math.max(220, Math.min(window.innerWidth * 0.6, newWidth));
+        chatPanel.style.width = newWidth + 'px';
+    });
+    window.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+
+    // Chat UI logic
+    chatInputForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const message = chatInput.value.trim();
+        if (!message) return;
+        addChatMessage('user', message);
+        chatInput.value = '';
+        chatInput.disabled = true;
+        // Placeholder: Simulate API call
+        setTimeout(() => {
+            addChatMessage('bot', 'This is a placeholder response from ChatGPT/Claude.');
+            chatInput.disabled = false;
+            chatInput.focus();
+        }, 1000);
+    });
 }
 
 // Authentication functions
@@ -992,6 +1063,8 @@ function updateVCSUI(status = {}) {
         branchBtn.disabled = true;
         logBtn.disabled = true;
     }
+    vcsCurrentPath.textContent = currentPath || '/';
+    vcsCurrentFile.textContent = currentFile ? currentFile.name : 'No file selected';
 }
 
 async function initRepository() {
@@ -1245,4 +1318,29 @@ function updateVCSUIForCurrentPath() {
     // Optionally, fetch and update VCS status for currentPath
     // For now, just call updateVCSUI (could be extended for more context)
     updateVCSUI();
+}
+
+// --- Panel Toggle Functions ---
+function showTerminalPanel() {
+    if (terminalPanel.style.display === 'none' || !terminalPanel.style.display) {
+        terminalPanel.style.display = 'flex';
+    } else {
+        terminalPanel.style.display = 'none';
+    }
+}
+function showChatPanel() {
+    if (chatPanel.style.display === 'none' || !chatPanel.style.display) {
+        chatPanel.style.display = 'flex';
+    } else {
+        chatPanel.style.display = 'none';
+    }
+}
+
+// --- Chat UI Logic ---
+function addChatMessage(sender, text) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-message ' + sender;
+    msgDiv.textContent = text;
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
