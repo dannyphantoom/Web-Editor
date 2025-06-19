@@ -37,6 +37,13 @@
         </div>
     </div>
 
+    <!-- Top Bar -->
+    <div class="topbar" id="topbar">
+        <button class="btn btn-topbar" id="showFilesBtn" onclick="showFilesPanel()"><i class="fas fa-folder"></i> Files</button>
+        <button class="btn btn-topbar" id="showVCSBtn" onclick="showVCSPanel()"><i class="fas fa-code-branch"></i> Version Control</button>
+        <button class="btn btn-topbar" id="showSearchBtn" onclick="showSearchModal()"><i class="fas fa-search"></i> Search</button>
+    </div>
+
     <!-- Main Application -->
     <div id="app" class="app">
         <!-- Header -->
@@ -64,39 +71,56 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Sidebar -->
-            <aside class="sidebar" id="sidebar">
-                <div class="sidebar-header">
-                    <div class="sidebar-title">
-                        <h3>Files</h3>
-                        <button class="btn btn-icon" onclick="showSearchModal()" title="Search Files">
-                            <i class="fas fa-search"></i>
-                        </button>
+            <!-- Sidebar (Files & Version Control) -->
+            <aside class="sidebar" id="sidebar" style="display: none; width: 260px;">
+                <!-- File Viewer Panel -->
+                <div id="filePanel" style="display: block;">
+                    <div class="sidebar-header">
+                        <div class="sidebar-title">
+                            <h3>Files</h3>
+                            <button class="btn btn-icon" onclick="showSearchModal()" title="Search Files">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                        <div class="breadcrumb" id="breadcrumb">
+                            <span class="breadcrumb-item" onclick="navigateToRoot()">Home</span>
+                        </div>
+                        <div class="sidebar-actions">
+                            <button class="btn btn-icon" onclick="showCreateFileModal()" title="Create New File">
+                                <i class="fas fa-file-plus"></i>
+                            </button>
+                            <button class="btn btn-icon" onclick="showCreateDirectoryModal()" title="Create New Directory">
+                                <i class="fas fa-folder-plus"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div class="breadcrumb" id="breadcrumb">
-                        <span class="breadcrumb-item" onclick="navigateToRoot()">Home</span>
-                    </div>
-                    <div class="sidebar-actions">
-                        <button class="btn btn-icon" onclick="showCreateFileModal()" title="Create New File">
-                            <i class="fas fa-file-plus"></i>
-                        </button>
-                        <button class="btn btn-icon" onclick="showCreateDirectoryModal()" title="Create New Directory">
-                            <i class="fas fa-folder-plus"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="file-list" id="fileList">
-                    <div class="empty-state">
-                        <i class="fas fa-folder-open"></i>
-                        <p>No files yet</p>
-                        <div class="empty-state-actions">
-                            <button class="btn btn-secondary" onclick="showCreateFileModal()">Create your first file</button>
-                            <button class="btn btn-secondary" onclick="showCreateDirectoryModal()">Create a directory</button>
+                    <div class="file-list" id="fileList">
+                        <div class="empty-state">
+                            <i class="fas fa-folder-open"></i>
+                            <p>No files yet</p>
+                            <div class="empty-state-actions">
+                                <button class="btn btn-secondary" onclick="showCreateFileModal()">Create your first file</button>
+                                <button class="btn btn-secondary" onclick="showCreateDirectoryModal()">Create a directory</button>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <!-- Version Control Panel (in sidebar) -->
+                <div id="vcsPanelSidebar" style="display: none;">
+                    <div class="vcs-section" id="vcsSection">
+                        <div class="vcs-status" id="vcsStatus">Not tracked</div>
+                        <div class="vcs-actions">
+                            <button class="btn btn-xs" id="initRepoBtn" onclick="showInitRepoModal()">Init</button>
+                            <button class="btn btn-xs" id="commitBtn" onclick="showCommitModal()" disabled>Commit</button>
+                            <button class="btn btn-xs" id="branchBtn" onclick="showBranchModal()" disabled>Branch</button>
+                            <button class="btn btn-xs" id="logBtn" onclick="showLogModal()" disabled>Log</button>
+                        </div>
+                        <div class="vcs-branch" id="vcsBranch"></div>
+                    </div>
+                </div>
             </aside>
-
+            <!-- Resizer -->
+            <div id="panelResizer" class="panel-resizer" style="display: none;"></div>
             <!-- Editor Area -->
             <section class="editor-area">
                 <div class="editor-header">
@@ -190,6 +214,63 @@
 
     <!-- Notification -->
     <div id="notification" class="notification"></div>
+
+    <!-- Commit Modal -->
+    <div id="commitModal" class="modal">
+        <div class="modal-content">
+            <form id="commitForm">
+                <div class="modal-header">
+                    <h2>Commit Changes</h2>
+                    <span class="close" onclick="closeCommitModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="commitMessage">Commit Message</label>
+                        <input type="text" id="commitMessage" name="message" required>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Commit</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCommitModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Branch Modal -->
+    <div id="branchModal" class="modal">
+        <div class="modal-content">
+            <form id="branchForm">
+                <div class="modal-header">
+                    <h2>Create Branch</h2>
+                    <span class="close" onclick="closeBranchModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="branchName">Branch Name</label>
+                        <input type="text" id="branchName" name="branch_name" required>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Create Branch</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeBranchModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Log/History Modal -->
+    <div id="logModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Commit History</h2>
+                <span class="close" onclick="closeLogModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="logHistory"></div>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>

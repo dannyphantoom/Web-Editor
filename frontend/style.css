@@ -116,30 +116,60 @@ body {
 /* Main content */
 .main-content {
     display: flex;
-    flex: 1;
-    overflow: hidden;
-    animation: fadeInUp 0.4s ease-out 0.1s both;
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    flex-direction: row;
+    height: 100%;
+    margin-top: 0.5rem;
 }
 
 /* Sidebar */
-.sidebar {
-    width: 300px;
-    background: var(--sidebar-bg);
-    border-right: 1px solid var(--border-color);
-    display: flex;
+.sidebar, .vcs-panel {
+    width: 260px;
+    min-width: 120px;
+    max-width: 50vw;
+    transition: width 0.2s;
+    display: none;
+    flex-shrink: 0;
     flex-direction: column;
     overflow: hidden;
+    background: var(--color-bg-light);
+    border-right: 1px solid var(--color-border);
+    z-index: 2;
+}
+
+.sidebar.active, .vcs-panel.active {
+    display: flex;
+}
+
+.panel-resizer {
+    width: 6px;
+    min-width: 6px;
+    max-width: 12px;
+    cursor: ew-resize;
+    background: var(--color-border);
+    display: none;
+    z-index: 3;
+    transition: background 0.2s;
+}
+
+.panel-resizer.active {
+    display: block;
+}
+
+.panel-resizer:hover, .panel-resizer.active {
+    background: #a5b4fc;
+}
+
+.sidebar:not(.active), .vcs-panel:not(.active) {
+    width: 260px !important;
+    min-width: 120px !important;
+    max-width: 50vw !important;
+}
+
+.editor-area {
+    flex: 1;
+    min-width: 0;
+    padding: 1rem;
+    transition: width 0.2s;
 }
 
 .sidebar-header {
@@ -363,25 +393,6 @@ body {
 }
 
 /* Editor area */
-.editor-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: white;
-    animation: slideInRight 0.3s ease-out;
-}
-
-@keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
 .editor-header {
     display: flex;
     justify-content: space-between;
@@ -549,7 +560,7 @@ body {
 .modal {
     display: none;
     position: fixed;
-    z-index: 1000;
+    z-index: 100;
     left: 0;
     top: 0;
     width: 100%;
@@ -901,4 +912,37 @@ body {
     flex-direction: column;
     gap: 0.5rem;
     align-items: center;
+}
+
+/* Top Bar Styles */
+.topbar {
+    display: flex;
+    align-items: center;
+    background: var(--color-bg-dark);
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    gap: 0.5rem;
+    z-index: 10;
+}
+
+.btn-topbar {
+    background: var(--color-bg-light);
+    color: var(--color-text);
+    border: none;
+    padding: 0.4rem 1rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-right: 0.5rem;
+    transition: background 0.2s;
+}
+
+.btn-topbar:active, .btn-topbar.active {
+    background: var(--color-accent);
+    color: #fff;
+}
+
+/* Adjust modal z-index above topbar */
+.modal {
+    z-index: 100;
 }

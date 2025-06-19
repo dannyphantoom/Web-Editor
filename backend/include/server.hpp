@@ -27,6 +27,26 @@ struct User {
     std::string filesystem_path;
 };
 
+// Version control structures
+struct Version {
+    std::string id;
+    std::string message;
+    std::string author;
+    time_t timestamp;
+    std::string parent_id;
+    std::map<std::string, std::string> file_hashes; // filename -> content hash
+    std::vector<std::string> changed_files;
+};
+
+struct Repository {
+    std::string name;
+    std::string path;
+    std::string current_branch;
+    std::map<std::string, Version> versions; // version_id -> Version
+    std::map<std::string, std::string> branches; // branch_name -> version_id
+    std::string head_version;
+};
+
 // File structure
 struct FileInfo {
     std::string name;
@@ -35,6 +55,7 @@ struct FileInfo {
     size_t size;
     bool is_directory;
     std::string path;  // Full path for navigation
+    std::string hash;  // Content hash for version control
 };
 
 // Session structure
@@ -69,6 +90,7 @@ private:
     uint16_t port;
     std::unordered_map<std::string, User> users;
     std::unordered_map<std::string, Session> sessions;
+    std::unordered_map<std::string, Repository> repositories; // username/path -> Repository
     std::string data_dir;
     
     // Helper functions
@@ -92,6 +114,18 @@ private:
     bool is_session_valid(const std::string& token);
     void update_session_activity(const std::string& token);
     
+    // Version control functions
+    std::string calculate_file_hash(const std::string& content);
+    std::string generate_version_id();
+    bool init_repository(const std::string& username, const std::string& path);
+    bool create_version(const std::string& username, const std::string& path, const std::string& message);
+    bool checkout_version(const std::string& username, const std::string& path, const std::string& version_id);
+    bool create_branch(const std::string& username, const std::string& path, const std::string& branch_name);
+    bool switch_branch(const std::string& username, const std::string& path, const std::string& branch_name);
+    std::vector<Version> get_version_history(const std::string& username, const std::string& path);
+    void load_repositories();
+    void save_repositories();
+    
     // Route handlers
     HttpResponse handle_static_file(const std::string& path);
     HttpResponse handle_login(const HttpRequest& request);
@@ -103,6 +137,12 @@ private:
     HttpResponse handle_create_file(const HttpRequest& request);
     HttpResponse handle_create_directory(const HttpRequest& request);
     HttpResponse handle_delete_file(const HttpRequest& request);
+    HttpResponse handle_init_repo(const HttpRequest& request);
+    HttpResponse handle_commit(const HttpRequest& request);
+    HttpResponse handle_get_history(const HttpRequest& request);
+    HttpResponse handle_checkout(const HttpRequest& request);
+    HttpResponse handle_create_branch(const HttpRequest& request);
+    HttpResponse handle_switch_branch(const HttpRequest& request);
     HttpResponse handle_index();
 
 public:

@@ -34,6 +34,21 @@ const searchModal = document.getElementById('searchModal');
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 const notification = document.getElementById('notification');
+const vcsSection = document.getElementById('vcsSection');
+const vcsStatus = document.getElementById('vcsStatus');
+const vcsBranch = document.getElementById('vcsBranch');
+const initRepoBtn = document.getElementById('initRepoBtn');
+const commitBtn = document.getElementById('commitBtn');
+const branchBtn = document.getElementById('branchBtn');
+const logBtn = document.getElementById('logBtn');
+const commitModal = document.getElementById('commitModal');
+const commitForm = document.getElementById('commitForm');
+const commitMessage = document.getElementById('commitMessage');
+const branchModal = document.getElementById('branchModal');
+const branchForm = document.getElementById('branchForm');
+const branchName = document.getElementById('branchName');
+const logModal = document.getElementById('logModal');
+const logHistory = document.getElementById('logHistory');
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -82,6 +97,10 @@ function setupEventListeners() {
         clearTimeout(autoSaveTimeout);
         autoSaveTimeout = setTimeout(autoSave, 2000); // Auto-save after 2 seconds of inactivity
     });
+
+    // VCS modals
+    commitForm.addEventListener('submit', handleCommitSubmit);
+    branchForm.addEventListener('submit', handleBranchSubmit);
 }
 
 // Authentication functions
@@ -341,9 +360,10 @@ function renderFileTreeItem(item) {
     `;
 }
 
-async function openFile(filename) {
+async function openFile(path) {
+    if (!path) return;
     try {
-        const response = await fetch(`/api/file?filename=${encodeURIComponent(filename)}`, {
+        const response = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
             method: 'GET',
             credentials: 'include'
         });
@@ -352,14 +372,14 @@ async function openFile(filename) {
             const data = await response.json();
             if (data.success) {
                 currentFile = {
-                    name: filename,
+                    name: path,
                     content: decodeURIComponent(data.content),
                     originalContent: decodeURIComponent(data.content)
                 };
                 
                 editor.value = currentFile.content;
                 editor.disabled = false;
-                currentFileName.textContent = filename;
+                currentFileName.textContent = path;
                 fileStatus.textContent = 'Saved';
                 fileStatus.className = 'file-status saved';
                 saveBtn.disabled = true;
@@ -484,38 +504,24 @@ function closeCreateFileModal() {
 
 async function handleCreateFile(e) {
     e.preventDefault();
-    
-    const formData = new FormData(createFileForm);
-    const filename = formData.get('filename');
-    
-    if (!filename) {
-        showNotification('Please enter a filename', 'error');
-        return;
-    }
-    
+    const filename = createFileForm.filename.value.trim();
+    if (!filename) return;
     try {
-        const response = await fetch('/api/create', {
+        const response = await fetch('/api/file', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',
-            body: `filename=${encodeURIComponent(filename)}`
+            body: `filename=${encodeURIComponent(filename)}&path=${encodeURIComponent(currentPath)}`
         });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                showNotification('File created successfully', 'success');
-                closeCreateFileModal();
-                loadUserFiles();
-                openFile(filename);
-            } else {
-                showNotification(data.message, 'error');
-            }
+        const data = await response.json();
+        if (data.success) {
+            showNotification('File created', 'success');
+            closeCreateFileModal();
+            loadUserFiles(currentPath);
+        } else {
+            showNotification(data.message, 'error');
         }
-    } catch (error) {
-        console.error('Error creating file:', error);
+    } catch (e) {
         showNotification('Failed to create file', 'error');
     }
 }
@@ -533,37 +539,24 @@ function closeCreateDirectoryModal() {
 
 async function handleCreateDirectory(e) {
     e.preventDefault();
-    
-    const formData = new FormData(createDirectoryForm);
-    const dirname = formData.get('dirname');
-    
-    if (!dirname) {
-        showNotification('Please enter a directory name', 'error');
-        return;
-    }
-    
+    const dirname = createDirectoryForm.dirname.value.trim();
+    if (!dirname) return;
     try {
         const response = await fetch('/api/create-dir', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',
-            body: `dirname=${encodeURIComponent(dirname)}`
+            body: `dirname=${encodeURIComponent(dirname)}&path=${encodeURIComponent(currentPath)}`
         });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                showNotification('Directory created successfully', 'success');
-                closeCreateDirectoryModal();
-                loadUserFiles();
-            } else {
-                showNotification(data.message, 'error');
-            }
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Directory created', 'success');
+            closeCreateDirectoryModal();
+            loadUserFiles(currentPath);
+        } else {
+            showNotification(data.message, 'error');
         }
-    } catch (error) {
-        console.error('Error creating directory:', error);
+    } catch (e) {
         showNotification('Failed to create directory', 'error');
     }
 }
@@ -729,6 +722,18 @@ window.addEventListener('beforeunload', function(e) {
 
 // Search functionality
 function showSearchModal() {
+    const sidebar = document.getElementById('sidebar');
+    const filePanel = document.getElementById('filePanel');
+    const vcsPanelSidebar = document.getElementById('vcsPanelSidebar');
+    const resizer = document.getElementById('panelResizer');
+    sidebar.classList.remove('active');
+    sidebar.style.width = '';
+    filePanel.style.display = 'block';
+    vcsPanelSidebar.style.display = 'none';
+    resizer.classList.remove('active');
+    resizer.style.display = 'none';
+    setTopbarActive('showSearchBtn');
+    // Only show the search modal popup
     searchModal.classList.add('show');
     searchInput.focus();
     searchInput.value = '';
@@ -861,4 +866,311 @@ function selectSearchResult(path, isDirectory) {
         // Open the file
         openFile(path);
     }
+}
+
+function showInitRepoModal() {
+    if (confirm('Initialize version control for this folder?')) {
+        initRepository();
+    }
+}
+
+function showCommitModal() {
+    commitModal.classList.add('show');
+    commitMessage.value = '';
+    commitMessage.focus();
+}
+
+function closeCommitModal() {
+    commitModal.classList.remove('show');
+    commitForm.reset();
+}
+
+function showBranchModal() {
+    branchModal.classList.add('show');
+    branchName.value = '';
+    branchName.focus();
+}
+
+function closeBranchModal() {
+    branchModal.classList.remove('show');
+    branchForm.reset();
+}
+
+function showLogModal() {
+    logModal.classList.add('show');
+    loadLogHistory();
+}
+
+function closeLogModal() {
+    logModal.classList.remove('show');
+    logHistory.innerHTML = '';
+}
+
+// Version Control API and UI
+function updateVCSUI(status = {}) {
+    if (status.tracked) {
+        vcsStatus.textContent = 'Tracked';
+        vcsBranch.textContent = status.branch ? `Branch: ${status.branch}` : '';
+        commitBtn.disabled = false;
+        branchBtn.disabled = false;
+        logBtn.disabled = false;
+    } else {
+        vcsStatus.textContent = 'Not tracked';
+        vcsBranch.textContent = '';
+        commitBtn.disabled = true;
+        branchBtn.disabled = true;
+        logBtn.disabled = true;
+    }
+}
+
+async function initRepository() {
+    try {
+        const response = await fetch('/api/init-repo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `path=${encodeURIComponent(currentPath)}`
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Repository initialized', 'success');
+            updateVCSUI({ tracked: true, branch: 'main' });
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (e) {
+        showNotification('Failed to initialize repository', 'error');
+    }
+}
+
+async function handleCommitSubmit(e) {
+    e.preventDefault();
+    const message = commitMessage.value.trim();
+    if (!message) return;
+    try {
+        const response = await fetch('/api/commit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `path=${encodeURIComponent(currentPath)}&message=${encodeURIComponent(message)}`
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Committed changes', 'success');
+            closeCommitModal();
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (e) {
+        showNotification('Failed to commit', 'error');
+    }
+}
+
+async function handleBranchSubmit(e) {
+    e.preventDefault();
+    const name = branchName.value.trim();
+    if (!name) return;
+    try {
+        const response = await fetch('/api/create-branch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `path=${encodeURIComponent(currentPath)}&branch_name=${encodeURIComponent(name)}`
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Branch created', 'success');
+            closeBranchModal();
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (e) {
+        showNotification('Failed to create branch', 'error');
+    }
+}
+
+async function loadLogHistory() {
+    logHistory.innerHTML = '<div>Loading...</div>';
+    try {
+        const response = await fetch(`/api/history?path=${encodeURIComponent(currentPath)}`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (data.success && data.history.length > 0) {
+            logHistory.innerHTML = data.history.map(entry => `
+                <div class="log-entry">
+                    <div class="log-message">${entry.message}</div>
+                    <div class="log-meta">${entry.author} • ${formatDate(entry.timestamp)}</div>
+                    <div class="log-files">Changed: ${entry.changed_files.join(', ')}</div>
+                    <div class="log-checkout">
+                        <button class="btn-log-checkout" onclick="checkoutVersion('${entry.id}')">Checkout</button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            logHistory.innerHTML = '<div>No commits yet.</div>';
+        }
+    } catch (e) {
+        logHistory.innerHTML = '<div>Failed to load history.</div>';
+    }
+}
+
+async function checkoutVersion(versionId) {
+    try {
+        const response = await fetch('/api/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `path=${encodeURIComponent(currentPath)}&version_id=${encodeURIComponent(versionId)}`
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Checked out version', 'success');
+            closeLogModal();
+            loadUserFiles(currentPath);
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (e) {
+        showNotification('Failed to checkout version', 'error');
+    }
+}
+
+// --- Top Bar Button Logic ---
+function showFilesPanel() {
+    const sidebar = document.getElementById('sidebar');
+    const filePanel = document.getElementById('filePanel');
+    const vcsPanelSidebar = document.getElementById('vcsPanelSidebar');
+    const resizer = document.getElementById('panelResizer');
+    // Toggle logic
+    if (sidebar.classList.contains('active') && filePanel.style.display !== 'none') {
+        sidebar.classList.remove('active');
+        sidebar.style.width = '';
+        resizer.classList.remove('active');
+        resizer.style.display = 'none';
+        setTopbarActive(null);
+        return;
+    }
+    sidebar.classList.add('active');
+    filePanel.style.display = 'block';
+    vcsPanelSidebar.style.display = 'none';
+    resizer.classList.add('active');
+    resizer.style.display = 'block';
+    setTopbarActive('showFilesBtn');
+}
+function showVCSPanel() {
+    const sidebar = document.getElementById('sidebar');
+    const filePanel = document.getElementById('filePanel');
+    const vcsPanelSidebar = document.getElementById('vcsPanelSidebar');
+    const resizer = document.getElementById('panelResizer');
+    // Toggle logic
+    if (sidebar.classList.contains('active') && vcsPanelSidebar.style.display !== 'none') {
+        sidebar.classList.remove('active');
+        sidebar.style.width = '';
+        resizer.classList.remove('active');
+        resizer.style.display = 'none';
+        setTopbarActive(null);
+        return;
+    }
+    sidebar.classList.add('active');
+    filePanel.style.display = 'none';
+    vcsPanelSidebar.style.display = 'block';
+    resizer.classList.add('active');
+    resizer.style.display = 'block';
+    setTopbarActive('showVCSBtn');
+    updateVCSUIForCurrentPath();
+}
+function showSearchModal() {
+    const sidebar = document.getElementById('sidebar');
+    const filePanel = document.getElementById('filePanel');
+    const vcsPanelSidebar = document.getElementById('vcsPanelSidebar');
+    const resizer = document.getElementById('panelResizer');
+    sidebar.classList.remove('active');
+    sidebar.style.width = '';
+    filePanel.style.display = 'block';
+    vcsPanelSidebar.style.display = 'none';
+    resizer.classList.remove('active');
+    resizer.style.display = 'none';
+    setTopbarActive('showSearchBtn');
+    // Only show the search modal popup
+    searchModal.classList.add('show');
+    searchInput.focus();
+    searchInput.value = '';
+    searchResults.innerHTML = `
+        <div class="empty-search">
+            <i class="fas fa-search"></i>
+            <p>Start typing to search files and folders</p>
+        </div>
+    `;
+}
+function setTopbarActive(btnId) {
+    ['showFilesBtn','showVCSBtn','showSearchBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+    if (btnId) {
+        document.getElementById(btnId).classList.add('active');
+    }
+}
+// On load, hide all panels and reset widths
+window.addEventListener('DOMContentLoaded', () => {
+    const sidebar = document.getElementById('sidebar');
+    const filePanel = document.getElementById('filePanel');
+    const vcsPanelSidebar = document.getElementById('vcsPanelSidebar');
+    const resizer = document.getElementById('panelResizer');
+    sidebar.classList.remove('active');
+    sidebar.style.width = '';
+    filePanel.style.display = 'block';
+    vcsPanelSidebar.style.display = 'none';
+    resizer.classList.remove('active');
+    resizer.style.display = 'none';
+    setTopbarActive(null);
+});
+
+// --- Resizer Logic ---
+(function() {
+    const resizer = document.getElementById('panelResizer');
+    const sidebar = document.getElementById('sidebar');
+    const vcsPanel = document.getElementById('vcsPanel');
+    let isDragging = false;
+    let startX = 0;
+    let startWidth = 0;
+    let activePanel = null;
+
+    function getActivePanel() {
+        return sidebar.classList.contains('active') ? sidebar : vcsPanel.classList.contains('active') ? vcsPanel : null;
+    }
+
+    resizer.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startX = e.clientX;
+        activePanel = getActivePanel();
+        if (activePanel) {
+            startWidth = activePanel.offsetWidth;
+        }
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', function(e) {
+        if (!isDragging || !activePanel) return;
+        const dx = e.clientX - startX;
+        let newWidth = startWidth + dx;
+        newWidth = Math.max(120, Math.min(window.innerWidth * 0.5, newWidth));
+        activePanel.style.width = newWidth + 'px';
+    });
+    window.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+})();
+
+// Helper to update VCS UI for the current folder
+function updateVCSUIForCurrentPath() {
+    // Optionally, fetch and update VCS status for currentPath
+    // For now, just call updateVCSUI (could be extended for more context)
+    updateVCSUI();
 }

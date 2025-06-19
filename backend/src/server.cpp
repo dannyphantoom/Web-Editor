@@ -18,6 +18,7 @@ WebServer::WebServer(uint16_t port) : port(port), server_fd(-1) {
         fs::create_directories(data_dir);
     }
     load_users();
+    load_repositories();
 }
 
 // Destructor
@@ -608,6 +609,7 @@ HttpResponse WebServer::handle_create_file(const HttpRequest& request) {
     }
     
     std::string filename = form_data["filename"];
+    std::string path = form_data["path"];
     
     if (filename.empty()) {
         std::cout << "Create file: No filename provided" << std::endl;
@@ -615,14 +617,19 @@ HttpResponse WebServer::handle_create_file(const HttpRequest& request) {
                 "{\"success\": false, \"message\": \"Filename required\"}"};
     }
     
-    std::string file_path = data_dir + "/users/" + username + "/" + filename;
+    std::string user_dir = data_dir + "/users/" + username;
+    std::string target_dir = user_dir;
+    if (!path.empty()) {
+        target_dir += "/" + path;
+    }
+    
+    std::string file_path = target_dir + "/" + filename;
     std::cout << "Creating file: " << file_path << std::endl;
     
-    // Ensure user directory exists
-    std::string user_dir = data_dir + "/users/" + username;
-    if (!fs::exists(user_dir)) {
-        std::cout << "Creating user directory: " << user_dir << std::endl;
-        fs::create_directories(user_dir);
+    // Ensure target directory exists
+    if (!fs::exists(target_dir)) {
+        std::cout << "Creating target directory: " << target_dir << std::endl;
+        fs::create_directories(target_dir);
     }
     
     if (fs::exists(file_path)) {
@@ -828,6 +835,18 @@ void WebServer::start() {
             response = handle_create_directory(request);
         } else if (request.path == "/api/delete" && request.method == "DELETE") {
             response = handle_delete_file(request);
+        } else if (request.path == "/api/init-repo" && request.method == "POST") {
+            response = handle_init_repo(request);
+        } else if (request.path == "/api/commit" && request.method == "POST") {
+            response = handle_commit(request);
+        } else if (request.path == "/api/history" && request.method == "GET") {
+            response = handle_get_history(request);
+        } else if (request.path == "/api/checkout" && request.method == "POST") {
+            response = handle_checkout(request);
+        } else if (request.path == "/api/create-branch" && request.method == "POST") {
+            response = handle_create_branch(request);
+        } else if (request.path == "/api/switch-branch" && request.method == "POST") {
+            response = handle_switch_branch(request);
         } else if (request.method == "GET") {
             response = handle_static_file(request.path);
         } else {
@@ -884,6 +903,7 @@ HttpResponse WebServer::handle_create_directory(const HttpRequest& request) {
     }
     
     std::string dirname = form_data["dirname"];
+    std::string path = form_data["path"];
     
     if (dirname.empty()) {
         std::cout << "Create directory: No directory name provided" << std::endl;
@@ -891,14 +911,19 @@ HttpResponse WebServer::handle_create_directory(const HttpRequest& request) {
                 "{\"success\": false, \"message\": \"Directory name required\"}"};
     }
     
-    std::string dir_path = data_dir + "/users/" + username + "/" + dirname;
+    std::string user_dir = data_dir + "/users/" + username;
+    std::string target_dir = user_dir;
+    if (!path.empty()) {
+        target_dir += "/" + path;
+    }
+    
+    std::string dir_path = target_dir + "/" + dirname;
     std::cout << "Creating directory: " << dir_path << std::endl;
     
-    // Ensure user directory exists
-    std::string user_dir = data_dir + "/users/" + username;
-    if (!fs::exists(user_dir)) {
-        std::cout << "Creating user directory: " << user_dir << std::endl;
-        fs::create_directories(user_dir);
+    // Ensure target directory exists
+    if (!fs::exists(target_dir)) {
+        std::cout << "Creating target directory: " << target_dir << std::endl;
+        fs::create_directories(target_dir);
     }
     
     if (fs::exists(dir_path)) {
@@ -915,5 +940,479 @@ HttpResponse WebServer::handle_create_directory(const HttpRequest& request) {
         std::cout << "Failed to create directory: " << dir_path << std::endl;
         return {500, "Internal Server Error", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Failed to create directory\"}"};
+    }
+}
+
+// Version control helper functions
+std::string WebServer::calculate_file_hash(const std::string& content) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, content.c_str(), content.length());
+    SHA256_Final(hash, &sha256);
+    
+    std::stringstream ss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+    }
+    return ss.str();
+}
+
+std::string WebServer::generate_version_id() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 255);
+    
+    std::string id;
+    for (int i = 0; i < 8; i++) {
+        id += (char)dis(gen);
+    }
+    
+    std::stringstream ss;
+    for (char c : id) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)(unsigned char)c;
+    }
+    return ss.str();
+}
+
+bool WebServer::init_repository(const std::string& username, const std::string& path) {
+    std::string repo_key = username + "/" + path;
+    
+    if (repositories.find(repo_key) != repositories.end()) {
+        return false; // Repository already exists
+    }
+    
+    Repository repo;
+    repo.name = path.empty() ? "root" : path;
+    repo.path = path;
+    repo.current_branch = "main";
+    repo.head_version = "";
+    
+    // Create initial version
+    Version initial_version;
+    initial_version.id = generate_version_id();
+    initial_version.message = "Initial commit";
+    initial_version.author = username;
+    initial_version.timestamp = time(nullptr);
+    initial_version.parent_id = "";
+    
+    repo.versions[initial_version.id] = initial_version;
+    repo.branches["main"] = initial_version.id;
+    repo.head_version = initial_version.id;
+    
+    repositories[repo_key] = repo;
+    save_repositories();
+    
+    return true;
+}
+
+bool WebServer::create_version(const std::string& username, const std::string& path, const std::string& message) {
+    std::string repo_key = username + "/" + path;
+    
+    if (repositories.find(repo_key) == repositories.end()) {
+        return false;
+    }
+    
+    Repository& repo = repositories[repo_key];
+    
+    // Get current files and calculate hashes
+    std::vector<FileInfo> files = list_user_files(username, path);
+    std::map<std::string, std::string> file_hashes;
+    std::vector<std::string> changed_files;
+    
+    for (const auto& file : files) {
+        if (!file.is_directory) {
+            std::string hash = calculate_file_hash(file.content);
+            file_hashes[file.name] = hash;
+            changed_files.push_back(file.name);
+        }
+    }
+    
+    // Create new version
+    Version new_version;
+    new_version.id = generate_version_id();
+    new_version.message = message;
+    new_version.author = username;
+    new_version.timestamp = time(nullptr);
+    new_version.parent_id = repo.head_version;
+    new_version.file_hashes = file_hashes;
+    new_version.changed_files = changed_files;
+    
+    repo.versions[new_version.id] = new_version;
+    repo.branches[repo.current_branch] = new_version.id;
+    repo.head_version = new_version.id;
+    
+    save_repositories();
+    return true;
+}
+
+bool WebServer::checkout_version(const std::string& username, const std::string& path, const std::string& version_id) {
+    std::string repo_key = username + "/" + path;
+    
+    if (repositories.find(repo_key) == repositories.end()) {
+        return false;
+    }
+    
+    Repository& repo = repositories[repo_key];
+    
+    if (repo.versions.find(version_id) == repo.versions.end()) {
+        return false;
+    }
+    
+    // For now, just update the head version
+    // In a full implementation, you'd restore the actual files
+    repo.head_version = version_id;
+    save_repositories();
+    
+    return true;
+}
+
+bool WebServer::create_branch(const std::string& username, const std::string& path, const std::string& branch_name) {
+    std::string repo_key = username + "/" + path;
+    
+    if (repositories.find(repo_key) == repositories.end()) {
+        return false;
+    }
+    
+    Repository& repo = repositories[repo_key];
+    
+    if (repo.branches.find(branch_name) != repo.branches.end()) {
+        return false; // Branch already exists
+    }
+    
+    repo.branches[branch_name] = repo.head_version;
+    save_repositories();
+    
+    return true;
+}
+
+bool WebServer::switch_branch(const std::string& username, const std::string& path, const std::string& branch_name) {
+    std::string repo_key = username + "/" + path;
+    
+    if (repositories.find(repo_key) == repositories.end()) {
+        return false;
+    }
+    
+    Repository& repo = repositories[repo_key];
+    
+    if (repo.branches.find(branch_name) == repo.branches.end()) {
+        return false; // Branch doesn't exist
+    }
+    
+    repo.current_branch = branch_name;
+    repo.head_version = repo.branches[branch_name];
+    save_repositories();
+    
+    return true;
+}
+
+std::vector<Version> WebServer::get_version_history(const std::string& username, const std::string& path) {
+    std::string repo_key = username + "/" + path;
+    std::vector<Version> history;
+    
+    if (repositories.find(repo_key) == repositories.end()) {
+        return history;
+    }
+    
+    Repository& repo = repositories[repo_key];
+    
+    for (const auto& pair : repo.versions) {
+        history.push_back(pair.second);
+    }
+    
+    // Sort by timestamp (newest first)
+    std::sort(history.begin(), history.end(), 
+              [](const Version& a, const Version& b) { return a.timestamp > b.timestamp; });
+    
+    return history;
+}
+
+void WebServer::load_repositories() {
+    std::string repos_file = data_dir + "/repositories.txt";
+    std::cout << "Loading repositories from: " << repos_file << std::endl;
+    
+    std::ifstream file(repos_file);
+    if (!file.is_open()) {
+        std::cout << "No repositories file found, starting with empty repository list" << std::endl;
+        return;
+    }
+    
+    // Simple loading for now - in a real implementation you'd want more robust parsing
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        
+        std::istringstream line_stream(line);
+        std::string repo_key, name, path, current_branch, head_version;
+        
+        if (std::getline(line_stream, repo_key, '|') &&
+            std::getline(line_stream, name, '|') &&
+            std::getline(line_stream, path, '|') &&
+            std::getline(line_stream, current_branch, '|') &&
+            std::getline(line_stream, head_version, '|')) {
+            
+            Repository repo;
+            repo.name = name;
+            repo.path = path;
+            repo.current_branch = current_branch;
+            repo.head_version = head_version;
+            
+            repositories[repo_key] = repo;
+            std::cout << "Loaded repository: " << repo_key << std::endl;
+        }
+    }
+}
+
+void WebServer::save_repositories() {
+    std::string repos_file = data_dir + "/repositories.txt";
+    std::cout << "Saving repositories to: " << repos_file << std::endl;
+    
+    if (!fs::exists(data_dir)) {
+        fs::create_directories(data_dir);
+    }
+    
+    std::ofstream file(repos_file);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open repositories file for writing: " << repos_file << std::endl;
+        return;
+    }
+    
+    for (const auto& pair : repositories) {
+        const Repository& repo = pair.second;
+        file << pair.first << "|" << repo.name << "|" << repo.path << "|" 
+             << repo.current_branch << "|" << repo.head_version << "\n";
+    }
+    
+    file.close();
+}
+
+// Version control route handlers
+HttpResponse WebServer::handle_init_repo(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    std::string body = request.body;
+    std::map<std::string, std::string> form_data;
+    
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
+        if (equal_pos != std::string::npos) {
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
+            form_data[key] = value;
+        }
+    }
+    
+    std::string path = form_data["path"];
+    
+    if (init_repository(username, path)) {
+        return {200, "OK", {{"Content-Type", "application/json"}}, 
+                "{\"success\": true, \"message\": \"Repository initialized successfully\"}"};
+    } else {
+        return {409, "Conflict", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Repository already exists\"}"};
+    }
+}
+
+HttpResponse WebServer::handle_commit(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    std::string body = request.body;
+    std::map<std::string, std::string> form_data;
+    
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
+        if (equal_pos != std::string::npos) {
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
+            form_data[key] = value;
+        }
+    }
+    
+    std::string path = form_data["path"];
+    std::string message = form_data["message"];
+    
+    if (message.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Commit message required\"}"};
+    }
+    
+    if (create_version(username, path, message)) {
+        return {200, "OK", {{"Content-Type", "application/json"}}, 
+                "{\"success\": true, \"message\": \"Changes committed successfully\"}"};
+    } else {
+        return {404, "Not Found", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Repository not found\"}"};
+    }
+}
+
+HttpResponse WebServer::handle_get_history(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    auto path_it = request.query_params.find("path");
+    std::string path = (path_it != request.query_params.end()) ? path_it->second : "";
+    
+    std::vector<Version> history = get_version_history(username, path);
+    
+    std::ostringstream json;
+    json << "{\"success\": true, \"history\": [";
+    for (size_t i = 0; i < history.size(); i++) {
+        if (i > 0) json << ",";
+        json << "{\"id\":\"" << history[i].id << "\","
+             << "\"message\":\"" << history[i].message << "\","
+             << "\"author\":\"" << history[i].author << "\","
+             << "\"timestamp\":" << history[i].timestamp << ","
+             << "\"parent_id\":\"" << history[i].parent_id << "\","
+             << "\"changed_files\":[";
+        for (size_t j = 0; j < history[i].changed_files.size(); j++) {
+            if (j > 0) json << ",";
+            json << "\"" << history[i].changed_files[j] << "\"";
+        }
+        json << "]}";
+    }
+    json << "]}";
+    
+    return {200, "OK", {{"Content-Type", "application/json"}}, json.str()};
+}
+
+HttpResponse WebServer::handle_checkout(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    std::string body = request.body;
+    std::map<std::string, std::string> form_data;
+    
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
+        if (equal_pos != std::string::npos) {
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
+            form_data[key] = value;
+        }
+    }
+    
+    std::string path = form_data["path"];
+    std::string version_id = form_data["version_id"];
+    
+    if (checkout_version(username, path, version_id)) {
+        return {200, "OK", {{"Content-Type", "application/json"}}, 
+                "{\"success\": true, \"message\": \"Checked out version successfully\"}"};
+    } else {
+        return {404, "Not Found", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Version or repository not found\"}"};
+    }
+}
+
+HttpResponse WebServer::handle_create_branch(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    std::string body = request.body;
+    std::map<std::string, std::string> form_data;
+    
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
+        if (equal_pos != std::string::npos) {
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
+            form_data[key] = value;
+        }
+    }
+    
+    std::string path = form_data["path"];
+    std::string branch_name = form_data["branch_name"];
+    
+    if (branch_name.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Branch name required\"}"};
+    }
+    
+    if (create_branch(username, path, branch_name)) {
+        return {200, "OK", {{"Content-Type", "application/json"}}, 
+                "{\"success\": true, \"message\": \"Branch created successfully\"}"};
+    } else {
+        return {409, "Conflict", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Branch already exists or repository not found\"}"};
+    }
+}
+
+HttpResponse WebServer::handle_switch_branch(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    
+    std::string body = request.body;
+    std::map<std::string, std::string> form_data;
+    
+    std::istringstream param_stream(body);
+    std::string param;
+    while (std::getline(param_stream, param, '&')) {
+        size_t equal_pos = param.find('=');
+        if (equal_pos != std::string::npos) {
+            std::string key = url_decode(param.substr(0, equal_pos));
+            std::string value = url_decode(param.substr(equal_pos + 1));
+            form_data[key] = value;
+        }
+    }
+    
+    std::string path = form_data["path"];
+    std::string branch_name = form_data["branch_name"];
+    
+    if (branch_name.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Branch name required\"}"};
+    }
+    
+    if (switch_branch(username, path, branch_name)) {
+        return {200, "OK", {{"Content-Type", "application/json"}}, 
+                "{\"success\": true, \"message\": \"Switched to branch successfully\"}"};
+    } else {
+        return {404, "Not Found", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Branch or repository not found\"}"};
     }
 }
