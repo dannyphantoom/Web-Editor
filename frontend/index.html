@@ -159,12 +159,32 @@
                 </div>
                 <!-- Chat Panel (Right) -->
                 <div id="chatPanel" class="chat-panel" style="display: none;">
-                    <div class="chat-header"><i class="fas fa-comments"></i> Chat</div>
+                    <div class="chat-header">
+                        <span><i class="fas fa-comments"></i> Chat</span>
+                        <div class="chat-provider-select">
+                            <label for="chatProvider">Provider:</label>
+                            <select id="chatProvider">
+                                <option value="openai">OpenAI</option>
+                                <option value="claude">Claude</option>
+                            </select>
+                            <input type="password" id="chatApiKey" placeholder="API Key" style="width: 120px; margin-left: 8px;" />
+                        </div>
+                        <button class="close-btn" onclick="hideChatPanel()">&times;</button>
+                    </div>
                     <div class="chat-messages" id="chatMessages"></div>
                     <form class="chat-input-bar" id="chatInputForm">
                         <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off" />
-                        <button type="submit"><i class="fas fa-paper-plane"></i></button>
+                        <button type="submit" id="chatSendBtn"><i class="fas fa-paper-plane"></i></button>
+                        <button type="button" id="agentModeBtn" class="agent-mode-btn" title="Toggle Agent Mode">Agent Mode</button>
                     </form>
+                    <div class="chat-model-select">
+                        <label for="chatModel">Model:</label>
+                        <select id="chatModel">
+                            <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                            <option value="gpt-4">gpt-4</option>
+                            <option value="gpt-4o">gpt-4o</option>
+                        </select>
+                    </div>
                     <div id="chatResizer" class="vertical-resizer"></div>
                 </div>
             </section>

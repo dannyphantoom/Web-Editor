@@ -175,15 +175,10 @@ function setupEventListeners() {
         e.preventDefault();
         const message = chatInput.value.trim();
         if (!message) return;
-        addChatMessage('user', message);
+        await sendChatMessage(message);
         chatInput.value = '';
         chatInput.disabled = true;
-        // Placeholder: Simulate API call
-        setTimeout(() => {
-            addChatMessage('bot', 'This is a placeholder response from ChatGPT/Claude.');
-            chatInput.disabled = false;
-            chatInput.focus();
-        }, 1000);
+        chatInput.focus();
     });
 }
 
@@ -1336,6 +1331,73 @@ function showChatPanel() {
     }
 }
 
+// --- Chat API Integration ---
+async function sendChatMessage(message) {
+    const provider = document.getElementById('chatProvider').value;
+    const apiKey = document.getElementById('chatApiKey').value;
+    if (!apiKey) {
+        addChatMessage('system', 'Please enter your API key.');
+        return;
+    }
+    addChatMessage('user', message);
+    addChatMessage('system', 'Thinking...');
+    let responseText = '';
+    try {
+        if (provider === 'openai') {
+            responseText = await callOpenAIChatAPI(message, apiKey);
+        } else if (provider === 'claude') {
+            responseText = await callClaudeChatAPI(message, apiKey);
+        } else {
+            responseText = 'Unknown provider.';
+        }
+    } catch (err) {
+        responseText = 'Error: ' + err.message;
+    }
+    // Remove the last 'Thinking...' message
+    removeLastSystemMessage();
+    addChatMessage('assistant', responseText);
+}
+
+function removeLastSystemMessage() {
+    const messages = document.querySelectorAll('.chat-message.system');
+    if (messages.length > 0) {
+        messages[messages.length - 1].remove();
+    }
+}
+
+// Placeholder API call functions
+async function callOpenAIChatAPI(message, apiKey) {
+    const model = document.getElementById('chatModel').value || 'gpt-3.5-turbo';
+    const endpoint = 'https://api.openai.com/v1/chat/completions';
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+    };
+    const body = JSON.stringify({
+        model,
+        messages: [
+            { role: 'user', content: message }
+        ]
+    });
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body
+    });
+    if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content
+        ? data.choices[0].message.content.trim()
+        : '[OpenAI] No response.';
+}
+
+async function callClaudeChatAPI(message, apiKey) {
+    // TODO: Implement real API call
+    return '[Claude] This is a placeholder response.';
+}
+
 // --- Chat UI Logic ---
 function addChatMessage(sender, text) {
     const msgDiv = document.createElement('div');
@@ -1343,4 +1405,16 @@ function addChatMessage(sender, text) {
     msgDiv.textContent = text;
     chatMessages.appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Agent Mode toggle logic
+const agentModeBtn = document.getElementById('agentModeBtn');
+let agentMode = false;
+if (agentModeBtn) {
+    agentModeBtn.onclick = function() {
+        agentMode = !agentMode;
+        agentModeBtn.classList.toggle('active', agentMode);
+        agentModeBtn.textContent = agentMode ? 'Agent Mode (On)' : 'Agent Mode';
+        // Placeholder: Add agent mode logic here later
+    };
 }
