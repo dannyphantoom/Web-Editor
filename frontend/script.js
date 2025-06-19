@@ -9,6 +9,30 @@ let currentPath = ''; // Current directory path
 let allFiles = []; // All files for search functionality
 let searchTimeout = null; // For debounced search
 
+// --- Dragging state variables ---
+let isDragging = false;
+let startY = 0;
+let startHeight = 0;
+let startX = 0;
+let startWidth = 0;
+
+// --- Chat API Key Management ---
+let storedApiKey = null;
+let storedProvider = 'openai';
+let storedModel = 'gpt-3.5-turbo';
+
+// --- Agent Mode Toggle Logic ---
+let agentMode = false;
+const agentModeBtn = document.getElementById('agentModeBtn');
+if (agentModeBtn) {
+    agentModeBtn.onclick = function() {
+        agentMode = !agentMode;
+        agentModeBtn.classList.toggle('active', agentMode);
+        agentModeBtn.textContent = agentMode ? 'Agent Mode (On)' : 'Agent Mode';
+        document.getElementById('agentFileBrowserBtn')?.classList.toggle('hidden', agentMode);
+    };
+}
+
 // DOM elements
 const authModal = document.getElementById('authModal');
 const authForm = document.getElementById('authForm');
@@ -175,9 +199,15 @@ function setupEventListeners() {
         e.preventDefault();
         const message = chatInput.value.trim();
         if (!message) return;
-        await sendChatMessage(message);
-        chatInput.value = '';
+        
+        // Disable input while processing
         chatInput.disabled = true;
+        
+        await sendChatMessage(message);
+        
+        // Re-enable input after response
+        chatInput.value = '';
+        chatInput.disabled = false;
         chatInput.focus();
     });
 }
@@ -1326,27 +1356,87 @@ function showTerminalPanel() {
 function showChatPanel() {
     if (chatPanel.style.display === 'none' || !chatPanel.style.display) {
         chatPanel.style.display = 'flex';
+        // Check if we have a stored API key
+        const savedApiKey = sessionStorage.getItem('chatApiKey');
+        const savedProvider = sessionStorage.getItem('chatProvider') || 'openai';
+        
+        if (savedApiKey) {
+            storedApiKey = savedApiKey;
+            storedProvider = savedProvider;
+            document.getElementById('chatProvider').value = storedProvider;
+        } else {
+            // Show API key modal
+            showApiKeyModal();
+        }
+        
+        // Ensure model dropdown is synchronized with storedModel
+        const chatModelSelect = document.getElementById('chatModel');
+        if (chatModelSelect && storedModel) {
+            chatModelSelect.value = storedModel;
+        }
     } else {
         chatPanel.style.display = 'none';
     }
 }
 
-// --- Chat API Integration ---
-async function sendChatMessage(message) {
-    const provider = document.getElementById('chatProvider').value;
-    const apiKey = document.getElementById('chatApiKey').value;
+function showApiKeyModal() {
+    document.getElementById('apiKeyModal').classList.add('show');
+    document.getElementById('apiKeyInput').focus();
+}
+
+function closeApiKeyModal() {
+    document.getElementById('apiKeyModal').classList.remove('show');
+    document.getElementById('apiKeyInput').value = '';
+    // If no API key is set, hide the chat panel
+    if (!storedApiKey) {
+        hideChatPanel();
+    }
+}
+
+function saveApiKeyAndClose() {
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+    const provider = document.getElementById('apiKeyProvider').value;
+    const saveKey = document.getElementById('saveApiKey').checked;
+    
     if (!apiKey) {
-        addChatMessage('system', 'Please enter your API key.');
+        showNotification('Please enter an API key', 'error');
         return;
     }
+    
+    storedApiKey = apiKey;
+    storedProvider = provider;
+    document.getElementById('chatProvider').value = provider;
+    
+    if (saveKey) {
+        sessionStorage.setItem('chatApiKey', apiKey);
+        sessionStorage.setItem('chatProvider', provider);
+    }
+    
+    document.getElementById('apiKeyModal').classList.remove('show');
+    document.getElementById('apiKeyInput').value = '';
+    showNotification('API key saved', 'success');
+}
+
+function hideChatPanel() {
+    chatPanel.style.display = 'none';
+}
+
+// --- Chat API Integration ---
+async function sendChatMessage(message) {
+    if (!storedApiKey) {
+        addChatMessage('system', 'Please enter your API key first.');
+        showApiKeyModal();
+        return;
+    }
+    
     addChatMessage('user', message);
     addChatMessage('system', 'Thinking...');
     let responseText = '';
     try {
-        if (provider === 'openai') {
-            responseText = await callOpenAIChatAPI(message, apiKey);
-        } else if (provider === 'claude') {
-            responseText = await callClaudeChatAPI(message, apiKey);
+        if (storedProvider === 'openai') {
+            responseText = await callOpenAIChatAPI(message, storedApiKey);
+        } else if (storedProvider === 'claude') {
+            responseText = await callClaudeChatAPI(message, storedApiKey);
         } else {
             responseText = 'Unknown provider.';
         }
@@ -1367,7 +1457,11 @@ function removeLastSystemMessage() {
 
 // Placeholder API call functions
 async function callOpenAIChatAPI(message, apiKey) {
-    const model = document.getElementById('chatModel').value || 'gpt-3.5-turbo';
+    const model = storedModel || 'gpt-3.5-turbo';
+    console.log('=== API Call Debug ===');
+    console.log('storedModel variable:', storedModel);
+    console.log('Using model:', model);
+    console.log('Dropdown current value:', document.getElementById('chatModel')?.value);
     const endpoint = 'https://api.openai.com/v1/chat/completions';
     const headers = {
         'Content-Type': 'application/json',
@@ -1379,6 +1473,7 @@ async function callOpenAIChatAPI(message, apiKey) {
             { role: 'user', content: message }
         ]
     });
+    console.log('API request body:', body);
     const response = await fetch(endpoint, {
         method: 'POST',
         headers,
@@ -1388,6 +1483,9 @@ async function callOpenAIChatAPI(message, apiKey) {
         throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
+    console.log('API response:', data);
+    console.log('Response content:', data.choices?.[0]?.message?.content);
+    console.log('=== End API Call Debug ===');
     return data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content
         ? data.choices[0].message.content.trim()
         : '[OpenAI] No response.';
@@ -1407,14 +1505,216 @@ function addChatMessage(sender, text) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Agent Mode toggle logic
-const agentModeBtn = document.getElementById('agentModeBtn');
-let agentMode = false;
-if (agentModeBtn) {
-    agentModeBtn.onclick = function() {
-        agentMode = !agentMode;
-        agentModeBtn.classList.toggle('active', agentMode);
-        agentModeBtn.textContent = agentMode ? 'Agent Mode (On)' : 'Agent Mode';
-        // Placeholder: Add agent mode logic here later
-    };
+// --- File Upload Logic ---
+function triggerFileUpload() {
+    document.getElementById('fileUploadInput').click();
+}
+function triggerFolderUpload() {
+    document.getElementById('folderUploadInput').click();
+}
+document.getElementById('fileUploadInput').addEventListener('change', handleFileUpload);
+document.getElementById('folderUploadInput').addEventListener('change', handleFolderUpload);
+async function handleFileUpload(e) {
+    const files = e.target.files;
+    if (!files.length) return;
+    for (const file of files) {
+        await uploadFileToServer(file, currentPath);
+    }
+    loadUserFiles(currentPath);
+}
+async function handleFolderUpload(e) {
+    const files = e.target.files;
+    if (!files.length) return;
+    for (const file of files) {
+        // file.webkitRelativePath gives the folder structure
+        await uploadFileToServer(file, currentPath, file.webkitRelativePath);
+    }
+    loadUserFiles(currentPath);
+}
+async function uploadFileToServer(file, path, relativePath = null) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', path || '');
+    if (relativePath) formData.append('relativePath', relativePath);
+    await fetch('/api/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+    });
+}
+
+// --- Chat File Attachment Logic ---
+const chatFileInput = document.getElementById('chatFileInput');
+const chatAttachments = document.getElementById('chatAttachments');
+let attachedFiles = [];
+chatFileInput.addEventListener('change', function(e) {
+    attachedFiles = Array.from(e.target.files);
+    renderChatAttachments();
+});
+function renderChatAttachments() {
+    if (attachedFiles.length === 0) {
+        chatAttachments.style.display = 'none';
+        chatAttachments.innerHTML = '';
+        return;
+    }
+    chatAttachments.style.display = 'block';
+    chatAttachments.innerHTML = attachedFiles.map(f => `<div class='chat-attachment-item'>${f.name} (${formatFileSize(f.size)})</div>`).join('');
+}
+
+// --- Agent File Browser Modal Logic ---
+const agentFileModal = document.getElementById('agentFileModal');
+const agentFileTree = document.getElementById('agentFileTree');
+const agentFileEditor = document.getElementById('agentFileEditor');
+const agentFilePath = document.getElementById('agentFilePath');
+const agentFileSaveBtn = document.getElementById('agentFileSaveBtn');
+let agentCurrentFile = null;
+
+function showAgentFileBrowser() {
+    if (!agentMode) return;
+    agentFileModal.classList.add('show');
+    agentFileEditor.value = '';
+    agentFileEditor.disabled = true;
+    agentFilePath.textContent = '';
+    agentFileSaveBtn.disabled = true;
+    agentCurrentFile = null;
+    loadAgentFileTree();
+}
+function closeAgentFileModal() {
+    agentFileModal.classList.remove('show');
+}
+async function loadAgentFileTree() {
+    // Reuse loadUserFiles logic but fetch all files for the agent
+    try {
+        const response = await fetch('/api/files', {
+            method: 'GET',
+            credentials: 'include'
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                const files = data.allFiles || [];
+                const fileTree = buildFileTree(files);
+                agentFileTree.innerHTML = `<ul class='file-tree'>${fileTree.map(item => renderAgentFileTreeItem(item)).join('')}</ul>`;
+                agentFileTree.removeEventListener('click', handleAgentFileTreeClick);
+                agentFileTree.addEventListener('click', handleAgentFileTreeClick);
+            } else {
+                agentFileTree.innerHTML = '<div style="color:#e11d48">Failed to load files</div>';
+            }
+        }
+    } catch (e) {
+        agentFileTree.innerHTML = '<div style="color:#e11d48">Failed to load files</div>';
+    }
+}
+function renderAgentFileTreeItem(item) {
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = hasChildren ? 'expanded' : '';
+    const hasChildrenClass = hasChildren ? 'has-children' : '';
+    const childrenHtml = hasChildren ? `<ul class='file-tree-children'>${item.children.map(child => renderAgentFileTreeItem(child)).join('')}</ul>` : '';
+    return `
+        <li class='file-tree-item ${hasChildrenClass} ${isExpanded}'>
+            <div class='file-item ${agentCurrentFile && agentCurrentFile.name === item.fullPath ? 'active' : ''} ${item.isDirectory ? 'directory' : ''}' data-full-path='${item.fullPath}'>
+                <i class='fas ${item.isDirectory ? 'fa-folder' : 'fa-file-alt'}'></i>
+                <span>${item.name}</span>
+            </div>
+            ${childrenHtml}
+        </li>
+    `;
+}
+function handleAgentFileTreeClick(e) {
+    const fileItem = e.target.closest('.file-item');
+    if (!fileItem) return;
+    e.stopPropagation();
+    const treeItem = fileItem.closest('.file-tree-item');
+    const fullPath = fileItem.dataset.fullPath;
+    if (fileItem.classList.contains('directory')) {
+        treeItem.classList.toggle('expanded');
+    } else {
+        openAgentFile(fullPath);
+    }
+}
+async function openAgentFile(path) {
+    if (!path) return;
+    try {
+        const response = await fetch(`/api/file?filename=${encodeURIComponent(path)}`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                agentCurrentFile = {
+                    name: path,
+                    content: decodeURIComponent(data.content),
+                    originalContent: decodeURIComponent(data.content)
+                };
+                agentFileEditor.value = agentCurrentFile.content;
+                agentFileEditor.disabled = !agentMode;
+                agentFilePath.textContent = path;
+                agentFileSaveBtn.disabled = !agentMode;
+            } else {
+                agentFileEditor.value = '';
+                agentFilePath.textContent = 'Failed to open file';
+                agentFileSaveBtn.disabled = true;
+            }
+        }
+    } catch (e) {
+        agentFileEditor.value = '';
+        agentFilePath.textContent = 'Failed to open file';
+        agentFileSaveBtn.disabled = true;
+    }
+}
+agentFileEditor.addEventListener('input', function() {
+    if (!agentCurrentFile) return;
+    agentCurrentFile.content = agentFileEditor.value;
+});
+async function saveAgentFile() {
+    if (!agentCurrentFile || !agentMode) return;
+    try {
+        const response = await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `filename=${encodeURIComponent(agentCurrentFile.name)}&content=${encodeURIComponent(agentCurrentFile.content)}`
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                agentCurrentFile.originalContent = agentCurrentFile.content;
+                showNotification('File saved (Agent)', 'success');
+            } else {
+                showNotification('Failed to save file (Agent)', 'error');
+            }
+        }
+    } catch (e) {
+        showNotification('Failed to save file (Agent)', 'error');
+    }
+}
+
+// Update provider selection to also update stored provider
+document.getElementById('chatProvider').addEventListener('change', function() {
+    storedProvider = this.value;
+    if (sessionStorage.getItem('chatApiKey')) {
+        sessionStorage.setItem('chatProvider', storedProvider);
+    }
+});
+
+// Update model selection (separate from provider)
+document.getElementById('chatModel').addEventListener('change', function() {
+    storedModel = this.value;
+    console.log('Model changed to:', storedModel);
+    console.log('Dropdown value:', this.value);
+    console.log('Stored model after change:', storedModel);
+    // Don't save model to session storage as it's not sensitive
+});
+
+// Add agent file browser button to chat panel (if not present)
+if (!document.getElementById('agentFileBrowserBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'agentFileBrowserBtn';
+    btn.className = 'btn btn-secondary';
+    btn.textContent = 'Browse Files';
+    btn.style.marginLeft = '0.5em';
+    btn.onclick = showAgentFileBrowser;
+    btn.classList.add('hidden');
+    document.querySelector('.chat-input-bar').appendChild(btn);
 }

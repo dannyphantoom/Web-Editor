@@ -833,6 +833,8 @@ void WebServer::start() {
             response = handle_create_file(request);
         } else if (request.path == "/api/create-dir" && request.method == "POST") {
             response = handle_create_directory(request);
+        } else if (request.path == "/api/upload" && request.method == "POST") {
+            response = handle_upload_file(request);
         } else if (request.path == "/api/delete" && request.method == "DELETE") {
             response = handle_delete_file(request);
         } else if (request.path == "/api/init-repo" && request.method == "POST") {
@@ -1415,4 +1417,115 @@ HttpResponse WebServer::handle_switch_branch(const HttpRequest& request) {
         return {404, "Not Found", {{"Content-Type", "application/json"}}, 
                 "{\"success\": false, \"message\": \"Branch or repository not found\"}"};
     }
+}
+
+HttpResponse WebServer::handle_upload_file(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+
+    // Only support multipart/form-data for now
+    auto it = request.headers.find("Content-Type");
+    if (it == request.headers.end() || it->second.find("multipart/form-data") == std::string::npos) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"Content-Type must be multipart/form-data\"}"};
+    }
+
+    // Very basic multipart parsing (for demo, not production)
+    std::string boundary;
+    std::string content_type = it->second;
+    size_t pos = content_type.find("boundary=");
+    if (pos != std::string::npos) {
+        boundary = "--" + content_type.substr(pos + 9);
+    } else {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"Missing boundary in Content-Type\"}"};
+    }
+
+    std::string body = request.body;
+    std::string user_dir = data_dir + "/users/" + username;
+    std::string upload_path = user_dir;
+
+    // Try to extract the path and relativePath fields (if present)
+    std::string path_field, rel_path_field;
+    size_t path_pos = body.find("name=\"path\"");
+    if (path_pos != std::string::npos) {
+        size_t val_start = body.find("\r\n\r\n", path_pos);
+        if (val_start != std::string::npos) {
+            size_t val_end = body.find(boundary, val_start);
+            if (val_end != std::string::npos) {
+                path_field = body.substr(val_start + 4, val_end - val_start - 6);
+            }
+        }
+    }
+    size_t rel_path_pos = body.find("name=\"relativePath\"");
+    if (rel_path_pos != std::string::npos) {
+        size_t val_start = body.find("\r\n\r\n", rel_path_pos);
+        if (val_start != std::string::npos) {
+            size_t val_end = body.find(boundary, val_start);
+            if (val_end != std::string::npos) {
+                rel_path_field = body.substr(val_start + 4, val_end - val_start - 6);
+            }
+        }
+    }
+    if (!path_field.empty()) {
+        upload_path += "/" + path_field;
+    }
+
+    // Find the file part
+    size_t file_pos = body.find("name=\"file\"");
+    if (file_pos == std::string::npos) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"No file part found\"}"};
+    }
+    // Extract filename
+    size_t fn_pos = body.find("filename=\"", file_pos);
+    if (fn_pos == std::string::npos) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"No filename found\"}"};
+    }
+    size_t fn_start = fn_pos + 10;
+    size_t fn_end = body.find("\"", fn_start);
+    std::string filename = body.substr(fn_start, fn_end - fn_start);
+
+    // Find file content
+    size_t content_start = body.find("\r\n\r\n", fn_end);
+    if (content_start == std::string::npos) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"Malformed file part\"}"};
+    }
+    content_start += 4;
+    size_t content_end = body.find(boundary, content_start);
+    if (content_end == std::string::npos) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}},
+                "{\"success\": false, \"message\": \"Malformed file part (no boundary)\"}"};
+    }
+    std::string file_content = body.substr(content_start, content_end - content_start - 2); // Remove trailing \r\n
+
+    // Determine final path
+    std::string final_path = upload_path;
+    if (!rel_path_field.empty()) {
+        // Use relative path for folder uploads
+        final_path += "/" + rel_path_field;
+    } else {
+        final_path += "/" + filename;
+    }
+
+    // Ensure directory exists
+    std::string dir = final_path.substr(0, final_path.find_last_of("/"));
+    if (!fs::exists(dir)) {
+        fs::create_directories(dir);
+    }
+
+    // Write file
+    std::ofstream out(final_path, std::ios::binary);
+    out.write(file_content.c_str(), file_content.size());
+    out.close();
+
+    return {200, "OK", {{"Content-Type", "application/json"}},
+            "{\"success\": true, \"message\": \"File uploaded\"}"};
 }

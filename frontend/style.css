@@ -1178,3 +1178,110 @@ body {
 .agent-mode-btn:hover {
     background: #4f46e5;
 }
+
+.chat-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    padding: 0.5em 1em;
+    background: #f1f5f9;
+    border-bottom: 1px solid var(--border-color);
+}
+.chat-attachment-item {
+    background: #e0e7ef;
+    color: #334155;
+    border-radius: 4px;
+    padding: 0.2em 0.7em;
+    font-size: 0.95em;
+    margin-right: 0.3em;
+    margin-bottom: 0.3em;
+    display: flex;
+    align-items: center;
+}
+.btn.btn-icon {
+    background: none;
+    border: none;
+    color: #6366f1;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0.2em 0.5em;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+.btn.btn-icon:hover {
+    background: #e0e7ef;
+}
+#agentFileBrowserBtn.hidden {
+    display: none;
+}
+
+/* Agent File Browser Modal */
+#agentFileModal .modal-content {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.12);
+  padding: 0;
+}
+#agentFileModal .modal-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+#agentFileModal .modal-body {
+  padding: 1.5rem;
+  background: #f8fafc;
+}
+#agentFileTree {
+  font-size: 1em;
+}
+#agentFileTree .file-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+#agentFileTree .file-tree-item {
+  position: relative;
+}
+#agentFileTree .file-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: 1px solid transparent;
+}
+#agentFileTree .file-item:hover {
+  background: #e0e7ef;
+}
+#agentFileTree .file-item.active {
+  background: #6366f1;
+  color: #fff;
+}
+#agentFileTree .file-item.directory {
+  font-weight: 500;
+}
+#agentFileTree .file-item i {
+  margin-right: 0.7em;
+  font-size: 1.1em;
+  width: 16px;
+  text-align: center;
+}
+#agentFileEditor {
+  font-family: 'Fira Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 1em;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.7em 1em;
+  background: #fff;
+  color: #1e293b;
+  margin-bottom: 0.5em;
+}
+#agentFilePath {
+  color: #64748b;
+  font-size: 0.97em;
+  margin-bottom: 0.3em;
+}

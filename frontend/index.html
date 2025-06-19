@@ -94,6 +94,14 @@
                             <button class="btn btn-icon" onclick="showCreateDirectoryModal()" title="Create New Directory">
                                 <i class="fas fa-folder-plus"></i>
                             </button>
+                            <button class="btn btn-icon" onclick="triggerFileUpload()" title="Upload File">
+                                <i class="fas fa-upload"></i>
+                            </button>
+                            <button class="btn btn-icon" onclick="triggerFolderUpload()" title="Upload Folder">
+                                <i class="fas fa-folder-open"></i>
+                            </button>
+                            <input type="file" id="fileUploadInput" style="display:none" multiple />
+                            <input type="file" id="folderUploadInput" style="display:none" webkitdirectory directory multiple />
                         </div>
                     </div>
                     <div class="file-list" id="fileList">
@@ -167,15 +175,17 @@
                                 <option value="openai">OpenAI</option>
                                 <option value="claude">Claude</option>
                             </select>
-                            <input type="password" id="chatApiKey" placeholder="API Key" style="width: 120px; margin-left: 8px;" />
                         </div>
                         <button class="close-btn" onclick="hideChatPanel()">&times;</button>
                     </div>
+                    <div class="chat-attachments" id="chatAttachments" style="display:none;"></div>
                     <div class="chat-messages" id="chatMessages"></div>
                     <form class="chat-input-bar" id="chatInputForm">
                         <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off" />
                         <button type="submit" id="chatSendBtn"><i class="fas fa-paper-plane"></i></button>
                         <button type="button" id="agentModeBtn" class="agent-mode-btn" title="Toggle Agent Mode">Agent Mode</button>
+                        <label for="chatFileInput" class="btn btn-icon" title="Attach Files" style="margin-left:0.5em;"><i class="fas fa-paperclip"></i></label>
+                        <input type="file" id="chatFileInput" style="display:none" multiple />
                     </form>
                     <div class="chat-model-select">
                         <label for="chatModel">Model:</label>
@@ -321,6 +331,61 @@
             </div>
             <div class="modal-body">
                 <div id="logHistory"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent File Browser Modal -->
+    <div id="agentFileModal" class="modal">
+        <div class="modal-content" style="max-width: 700px; min-width: 400px;">
+            <div class="modal-header">
+                <h2>Agent File Browser</h2>
+                <span class="close" onclick="closeAgentFileModal()">&times;</span>
+            </div>
+            <div class="modal-body" style="display: flex; gap: 1em;">
+                <div style="flex: 1; min-width: 180px; max-width: 260px; overflow-y: auto; border-right: 1px solid #e2e8f0;">
+                    <div id="agentFileTree"></div>
+                </div>
+                <div style="flex: 2; display: flex; flex-direction: column;">
+                    <div style="margin-bottom: 0.5em; font-weight: 500;" id="agentFilePath"></div>
+                    <textarea id="agentFileEditor" style="flex: 1; width: 100%; min-height: 200px; resize: vertical;" disabled></textarea>
+                    <div style="margin-top: 0.5em; display: flex; gap: 0.5em;">
+                        <button class="btn btn-primary" id="agentFileSaveBtn" onclick="saveAgentFile()" disabled>Save</button>
+                        <button class="btn btn-secondary" onclick="closeAgentFileModal()">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Modal -->
+    <div id="apiKeyModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Enter API Key</h2>
+                <span class="close" onclick="closeApiKeyModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="apiKeyProvider">Provider:</label>
+                    <select id="apiKeyProvider">
+                        <option value="openai">OpenAI</option>
+                        <option value="claude">Claude</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="apiKeyInput">API Key:</label>
+                    <input type="password" id="apiKeyInput" placeholder="Enter your API key..." required>
+                </div>
+                <div class="form-group">
+                    <label for="saveApiKey">
+                        <input type="checkbox" id="saveApiKey"> Save API key for this session
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-primary" onclick="saveApiKeyAndClose()">Continue</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeApiKeyModal()">Cancel</button>
+                </div>
             </div>
         </div>
     </div>

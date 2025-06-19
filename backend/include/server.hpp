@@ -136,6 +136,7 @@ private:
     HttpResponse handle_save_file(const HttpRequest& request);
     HttpResponse handle_create_file(const HttpRequest& request);
     HttpResponse handle_create_directory(const HttpRequest& request);
+    HttpResponse handle_upload_file(const HttpRequest& request);
     HttpResponse handle_delete_file(const HttpRequest& request);
     HttpResponse handle_init_repo(const HttpRequest& request);
     HttpResponse handle_commit(const HttpRequest& request);
