@@ -1344,37 +1344,58 @@ function showTerminalPanel() {
     }
 }
 function showChatPanel() {
-    if (chatPanel.style.display === 'none' || !chatPanel.style.display) {
-        chatPanel.style.display = 'flex';
-        // Check if we have a stored API key
-        const savedApiKey = sessionStorage.getItem('chatApiKey');
-        const savedProvider = sessionStorage.getItem('chatProvider') || 'openai';
-        
-        if (savedApiKey) {
-            storedApiKey = savedApiKey;
-            storedProvider = savedProvider;
-            document.getElementById('chatProvider').value = storedProvider;
+    // Use the ChatManager if available, otherwise fall back to direct manipulation
+    if (window.chatManager) {
+        if (chatPanel.style.display === 'none' || !chatPanel.style.display) {
+            window.chatManager.showChatPanel();
         } else {
-            // Show API key modal
-            showApiKeyModal();
-        }
-        
-        // Ensure model dropdown is synchronized with storedModel
-        const chatModelSelect = document.getElementById('chatModel');
-        if (chatModelSelect && storedModel) {
-            chatModelSelect.value = storedModel;
+            window.chatManager.hideChatPanel();
         }
     } else {
-        chatPanel.style.display = 'none';
+        // Fallback for when ChatManager is not available
+        if (chatPanel.style.display === 'none' || !chatPanel.style.display) {
+            chatPanel.style.display = 'flex';
+            
+            // Check if we have a stored API key from AuthManager
+            if (window.authManager && window.authManager.storedApiKey) {
+                // API key is already loaded in AuthManager
+                console.log('Using API key from AuthManager');
+            } else {
+                // Show API key modal
+                showApiKeyModal();
+            }
+            
+            // Ensure model dropdown is synchronized with storedModel
+            const chatModelSelect = document.getElementById('chatModel');
+            if (chatModelSelect && window.authManager && window.authManager.storedModel) {
+                chatModelSelect.value = window.authManager.storedModel;
+            }
+        } else {
+            chatPanel.style.display = 'none';
+        }
     }
 }
 
 function showApiKeyModal() {
+    // Use AuthManager if available
+    if (window.authManager) {
+        window.authManager.showApiKeyModal();
+        return;
+    }
+    
+    // Fallback for when AuthManager is not available
     document.getElementById('apiKeyModal').classList.add('show');
     document.getElementById('apiKeyInput').focus();
 }
 
 function closeApiKeyModal() {
+    // Use AuthManager if available
+    if (window.authManager) {
+        window.authManager.closeApiKeyModal();
+        return;
+    }
+    
+    // Fallback for when AuthManager is not available
     document.getElementById('apiKeyModal').classList.remove('show');
     document.getElementById('apiKeyInput').value = '';
     // If no API key is set, hide the chat panel
@@ -1384,8 +1405,16 @@ function closeApiKeyModal() {
 }
 
 function saveApiKeyAndClose() {
+    // Use AuthManager if available for proper server-side persistence
+    if (window.authManager) {
+        window.authManager.saveApiKeyAndClose();
+        return;
+    }
+    
+    // Fallback for when AuthManager is not available
     const apiKey = document.getElementById('apiKeyInput').value.trim();
     const provider = document.getElementById('apiKeyProvider').value;
+    const model = document.getElementById('apiKeyModel').value;
     const saveKey = document.getElementById('saveApiKey').checked;
     
     if (!apiKey) {
@@ -1395,11 +1424,13 @@ function saveApiKeyAndClose() {
     
     storedApiKey = apiKey;
     storedProvider = provider;
+    storedModel = model;
     document.getElementById('chatProvider').value = provider;
     
     if (saveKey) {
         sessionStorage.setItem('chatApiKey', apiKey);
         sessionStorage.setItem('chatProvider', provider);
+        sessionStorage.setItem('chatModel', model);
     }
     
     document.getElementById('apiKeyModal').classList.remove('show');

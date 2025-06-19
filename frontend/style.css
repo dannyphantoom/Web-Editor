@@ -117,8 +117,9 @@ body {
 .main-content {
     display: flex;
     flex-direction: row;
-    height: 100%;
+    height: calc(100vh - 80px); /* Subtract header height */
     margin-top: 0.5rem;
+    overflow: hidden; /* Prevent main content from scrolling */
 }
 
 /* Sidebar */
@@ -170,6 +171,7 @@ body {
     min-width: 0;
     padding: 1rem;
     transition: width 0.2s;
+    overflow: hidden; /* Prevent editor area from scrolling */
 }
 
 .sidebar-header {
@@ -442,6 +444,8 @@ body {
 .editor-container {
     flex: 1;
     padding: 1.5rem;
+    overflow-y: auto; /* Only the editor container should scroll */
+    height: 100%;
 }
 
 #editor {
@@ -705,10 +709,14 @@ body {
     transition: transform 0.3s ease;
     max-width: 300px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    visibility: hidden;
 }
 
 .notification.show {
     transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
 }
 
 .notification.success {

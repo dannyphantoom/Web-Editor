@@ -26,6 +26,16 @@ class ChatManager {
         
         // Chat panel resizer
         this.chatResizer.addEventListener('mousedown', this.startResize.bind(this));
+        
+        // Model selection
+        const chatModelSelect = document.getElementById('chatModel');
+        if (chatModelSelect) {
+            chatModelSelect.addEventListener('change', (e) => {
+                if (window.authManager) {
+                    window.authManager.storedModel = e.target.value;
+                }
+            });
+        }
     }
 
     showChatPanel() {
@@ -33,6 +43,9 @@ class ChatManager {
         if (window.panelManager) {
             window.panelManager.setTopbarActive('showChatBtn');
         }
+        
+        // Sync model dropdown with stored value
+        this.syncModelDropdown();
     }
 
     hideChatPanel() {
@@ -101,13 +114,40 @@ class ChatManager {
         // Add event listeners for code block buttons
         if (sender === 'assistant') {
             const addButtons = msgDiv.querySelectorAll('.add-to-file-btn');
-            addButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
+            console.log('Found', addButtons.length, 'add-to-file buttons');
+            addButtons.forEach((btn, index) => {
+                console.log('Setting up event listener for button', index);
+                btn.addEventListener('click', (e) => {
+                    console.log('Add to file button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
                     const codeBlock = btn.closest('.code-block');
-                    const codeContent = codeBlock.querySelector('pre code').textContent;
+                    if (!codeBlock) {
+                        console.error('Could not find code block');
+                        return;
+                    }
+                    
+                    const codeElement = codeBlock.querySelector('pre code');
+                    if (!codeElement) {
+                        console.error('Could not find code element');
+                        return;
+                    }
+                    
+                    const codeContent = codeElement.textContent;
                     const fileName = btn.dataset.fileName || 'untitled';
+                    
+                    console.log('Adding code to file:', fileName, 'Content length:', codeContent.length);
+                    
                     if (window.editorManager) {
-                        window.editorManager.addCodeToCurrentFile(codeContent, fileName);
+                        try {
+                            window.editorManager.addCodeToCurrentFile(codeContent, fileName);
+                            console.log('Successfully added code to file');
+                        } catch (error) {
+                            console.error('Error adding code to file:', error);
+                        }
+                    } else {
+                        console.error('Editor manager not available');
                     }
                 });
             });
@@ -141,7 +181,7 @@ class ChatManager {
                 <div class="code-block">
                     <div class="code-header">
                         <span class="file-name">${fileName}</span>
-                        <button class="add-to-file-btn" data-file-name="${fileName}" ${!currentFile ? 'disabled' : ''}>
+                        <button class="add-to-file-btn" data-file-name="${fileName}">
                             ${isCurrentFile ? 'Add to Current File' : 'Add to File'}
                         </button>
                     </div>
@@ -207,6 +247,7 @@ class ChatManager {
                 highlighted = this.highlightC(code);
                 break;
             default:
+                // For default case, just escape HTML to prevent XSS
                 highlighted = this.escapeHtml(code);
         }
         
@@ -219,8 +260,15 @@ class ChatManager {
         return div.innerHTML;
     }
 
+    decodeHtmlEntities(text) {
+        const div = document.createElement('div');
+        div.innerHTML = text;
+        return div.textContent || div.innerText || '';
+    }
+
     highlightJavaScript(code) {
-        return code
+        const decodedCode = this.decodeHtmlEntities(code);
+        return decodedCode
             .replace(/\b(const|let|var|function|return|if|else|for|while|class|import|export|default|async|await|try|catch|finally|throw|new|this|super|extends|static|public|private|protected|interface|type|enum|namespace|module|require|from|as)\b/g, '<span class="keyword">$1</span>')
             .replace(/\b(console|document|window|Math|Date|Array|Object|String|Number|Boolean|Promise|fetch|JSON|localStorage|sessionStorage)\b/g, '<span class="function">$1</span>')
             .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
@@ -231,7 +279,8 @@ class ChatManager {
     }
 
     highlightHTML(code) {
-        return code
+        const decodedCode = this.decodeHtmlEntities(code);
+        return decodedCode
             .replace(/(&lt;\/?)([a-zA-Z][a-zA-Z0-9]*)([^&]*?)(&gt;)/g, '<span class="keyword">$1$2$3$4</span>')
             .replace(/(["'])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
             .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="comment">$1</span>')
@@ -239,7 +288,8 @@ class ChatManager {
     }
 
     highlightCSS(code) {
-        return code
+        const decodedCode = this.decodeHtmlEntities(code);
+        return decodedCode
             .replace(/([a-zA-Z-]+)(?=\s*:)/g, '<span class="function">$1</span>')
             .replace(/(["'])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
             .replace(/\b(\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|deg|rad|turn|s|ms)?)\b/g, '<span class="number">$1</span>')
@@ -248,7 +298,8 @@ class ChatManager {
     }
 
     highlightPython(code) {
-        return code
+        const decodedCode = this.decodeHtmlEntities(code);
+        return decodedCode
             .replace(/\b(def|class|import|from|as|if|elif|else|for|while|try|except|finally|with|return|yield|pass|break|continue|raise|True|False|None|and|or|not|in|is|lambda|global|nonlocal|del|assert)\b/g, '<span class="keyword">$1</span>')
             .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
             .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>')
@@ -257,7 +308,8 @@ class ChatManager {
     }
 
     highlightJava(code) {
-        return code
+        const decodedCode = this.decodeHtmlEntities(code);
+        return decodedCode
             .replace(/\b(public|private|protected|static|final|abstract|class|interface|extends|implements|import|package|new|this|super|return|if|else|for|while|do|switch|case|default|try|catch|finally|throw|throws|break|continue|void|int|long|float|double|boolean|char|byte|short|String|Object|null|true|false)\b/g, '<span class="keyword">$1</span>')
             .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
             .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>')
@@ -267,7 +319,8 @@ class ChatManager {
     }
 
     highlightCpp(code) {
-        return code
+        const decodedCode = this.decodeHtmlEntities(code);
+        return decodedCode
             .replace(/\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|class|namespace|template|typename|virtual|public|private|protected|friend|inline|explicit|mutable|operator|this|new|delete|true|false|nullptr|using|std|cout|cin|endl|string|vector|map|set|list|queue|stack|priority_queue|unique_ptr|shared_ptr|weak_ptr|make_unique|make_shared|move|forward|decltype|constexpr|noexcept|override|final|alignas|alignof|char16_t|char32_t|const_cast|dynamic_cast|reinterpret_cast|static_cast|typeid|type_info|wchar_t)\b/g, '<span class="keyword">$1</span>')
             .replace(/\b(printf|scanf|malloc|free|calloc|realloc|strcpy|strcat|strlen|strcmp|fopen|fclose|fread|fwrite|fprintf|fscanf|getchar|putchar|gets|puts|atoi|atof|itoa|sprintf|sscanf|memcpy|memmove|memset|memcmp|qsort|bsearch|rand|srand|time|clock|exit|abort|assert|setjmp|longjmp|va_start|va_arg|va_end|va_copy)\b/g, '<span class="function">$1</span>')
             .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
@@ -278,16 +331,57 @@ class ChatManager {
     }
 
     highlightC(code) {
-        return code
-            .replace(/\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|inline|restrict|_Bool|_Complex|_Imaginary)\b/g, '<span class="keyword">$1</span>')
-            .replace(/\b(printf|scanf|malloc|free|calloc|realloc|strcpy|strcat|strlen|strcmp|fopen|fclose|fread|fwrite|fprintf|fscanf|getchar|putchar|gets|puts|atoi|atof|itoa|sprintf|sscanf|memcpy|memmove|memset|memcmp|qsort|bsearch|rand|srand|time|clock|exit|abort|assert|setjmp|longjmp|va_start|va_arg|va_end|va_copy)\b/g, '<span class="function">$1</span>')
-            .replace(/\b(NULL|true|false|TRUE|FALSE|EOF|BUFSIZ|FILENAME_MAX|FOPEN_MAX|L_tmpnam|TMP_MAX|_IOFBF|_IOLBF|_IONBF|SEEK_CUR|SEEK_END|SEEK_SET|EXIT_FAILURE|EXIT_SUCCESS|RAND_MAX|CLOCKS_PER_SEC)\b/g, '<span class="number">$1</span>')
-            .replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>')
-            .replace(/\b(\d+(?:\.\d+)?(?:[uU]?[lL]?[lL]?|[uU]?[lL]?[lL]?[uU]?))\b/g, '<span class="number">$1</span>')
-            .replace(/\b(0[xX][0-9a-fA-F]+(?:[uU]?[lL]?[lL]?|[uU]?[lL]?[lL]?[uU]?))\b/g, '<span class="number">$1</span>')
-            .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>')
+        // Don't decode HTML entities - work with the raw code
+        let highlighted = code;
+        
+        // Apply syntax highlighting in a very simple way
+        // Use word boundaries and careful regex to avoid conflicts
+        
+        // 1. Comments first
+        highlighted = highlighted
             .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>')
-            .replace(/([+\-*/%=<>!&|^~?:,;.()[\]{}])/g, '<span class="operator">$1</span>');
+            .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>');
+        
+        // 2. String literals (but not inside comments)
+        highlighted = highlighted.replace(/(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$1$2$1</span>');
+        
+        // 3. Numbers
+        highlighted = highlighted
+            .replace(/\b(0[xX][0-9a-fA-F]+)\b/g, '<span class="number">$1</span>')
+            .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="number">$1</span>');
+        
+        // 4. C keywords (using word boundaries)
+        const keywords = ['auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do', 
+                         'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'int', 
+                         'long', 'register', 'return', 'short', 'signed', 'sizeof', 'static', 
+                         'struct', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while'];
+        
+        keywords.forEach(keyword => {
+            const regex = new RegExp(`\\b${keyword}\\b`, 'g');
+            highlighted = highlighted.replace(regex, `<span class="keyword">${keyword}</span>`);
+        });
+        
+        // 5. C functions
+        const functions = ['printf', 'scanf', 'malloc', 'free', 'calloc', 'realloc', 'strcpy', 'strcat',
+                          'strlen', 'strcmp', 'fopen', 'fclose', 'fread', 'fwrite', 'fprintf', 'fscanf',
+                          'getchar', 'putchar', 'gets', 'puts', 'atoi', 'atof', 'itoa', 'sprintf',
+                          'sscanf', 'memcpy', 'memmove', 'memset', 'memcmp', 'qsort', 'bsearch',
+                          'rand', 'srand', 'time', 'clock', 'exit', 'abort', 'assert'];
+        
+        functions.forEach(func => {
+            const regex = new RegExp(`\\b${func}\\b`, 'g');
+            highlighted = highlighted.replace(regex, `<span class="function">${func}</span>`);
+        });
+        
+        // 6. Operators (simple approach)
+        const operators = ['+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|', '^', '~', '?', ':', ',', ';', '.', '(', ')', '[', ']', '{', '}'];
+        operators.forEach(op => {
+            const escapedOp = op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(?<!<span[^>]*>)(${escapedOp})(?!</span>)`, 'g');
+            highlighted = highlighted.replace(regex, `<span class="operator">${op}</span>`);
+        });
+        
+        return highlighted;
     }
 
     removeLastSystemMessage() {
@@ -298,11 +392,19 @@ class ChatManager {
     }
 
     async callOpenAIChatAPI(message, apiKey) {
-        const model = window.authManager.storedModel || 'gpt-3.5-turbo';
+        // Get the selected model from the dropdown
+        const chatModelSelect = document.getElementById('chatModel');
+        const selectedModel = chatModelSelect ? chatModelSelect.value : 'gpt-3.5-turbo';
+        
+        // Update the stored model to match the selected one
+        if (window.authManager) {
+            window.authManager.storedModel = selectedModel;
+        }
+        
         console.log('=== API Call Debug ===');
-        console.log('storedModel variable:', window.authManager.storedModel);
-        console.log('Using model:', model);
-        console.log('Dropdown current value:', document.getElementById('chatModel')?.value);
+        console.log('Selected model from dropdown:', selectedModel);
+        console.log('storedModel variable:', window.authManager?.storedModel);
+        console.log('Using model:', selectedModel);
         
         const endpoint = 'https://api.openai.com/v1/chat/completions';
         const headers = {
@@ -310,7 +412,7 @@ class ChatManager {
             'Authorization': `Bearer ${apiKey}`
         };
         const body = JSON.stringify({
-            model,
+            model: selectedModel,
             messages: [{ role: 'user', content: message }]
         });
         
@@ -394,6 +496,13 @@ class ChatManager {
         
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    syncModelDropdown() {
+        const chatModelSelect = document.getElementById('chatModel');
+        if (chatModelSelect && window.authManager) {
+            chatModelSelect.value = window.authManager.storedModel || 'gpt-3.5-turbo';
+        }
     }
 }
 

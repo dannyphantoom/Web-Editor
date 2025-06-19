@@ -156,10 +156,31 @@ class WebEditorApp {
         const notification = document.getElementById('notification');
         if (!notification) return;
         
-        notification.textContent = message;
-        notification.className = `notification ${type} show`;
+        // Clear any existing timeout
+        if (this.notificationTimeout) {
+            clearTimeout(this.notificationTimeout);
+        }
         
-        setTimeout(() => {
+        // Clear any existing notification first
+        notification.classList.remove('show');
+        notification.textContent = '';
+        notification.className = 'notification';
+        
+        // Force a reflow to ensure the hide animation completes
+        notification.offsetHeight;
+        
+        // Set the new notification
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        
+        // Force a reflow to ensure the class change is applied
+        notification.offsetHeight;
+        
+        // Show the notification
+        notification.classList.add('show');
+        
+        // Set timeout to hide the notification
+        this.notificationTimeout = setTimeout(() => {
             this.hideNotification();
         }, 5000);
     }
@@ -168,6 +189,18 @@ class WebEditorApp {
         const notification = document.getElementById('notification');
         if (notification) {
             notification.classList.remove('show');
+            
+            // Clear the timeout
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+            
+            // Clear the content after animation
+            setTimeout(() => {
+                notification.textContent = '';
+                notification.className = 'notification';
+            }, 300); // Match the CSS transition duration
         }
     }
 }

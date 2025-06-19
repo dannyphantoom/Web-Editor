@@ -84,6 +84,9 @@ class AuthManager {
                 if (window.fileManager) {
                     window.fileManager.loadUserFiles();
                 }
+                
+                // Load API key after successful authentication
+                await this.loadStoredApiKey();
             } else {
                 showNotification(data.message || 'Authentication failed', 'error');
             }
@@ -111,6 +114,9 @@ class AuthManager {
                 if (window.fileManager) {
                     window.fileManager.loadUserFiles();
                 }
+                
+                // Load API key after successful session validation
+                await this.loadStoredApiKey();
             } else {
                 this.updateUIForUnauthenticatedUser();
             }
@@ -188,6 +194,12 @@ class AuthManager {
                     if (apiKeyInput) apiKeyInput.value = this.storedApiKey;
                     if (providerSelect) providerSelect.value = this.storedProvider;
                     if (modelSelect) modelSelect.value = this.storedModel;
+                    
+                    // Sync the chat model dropdown with the loaded model
+                    const chatModelSelect = document.getElementById('chatModel');
+                    if (chatModelSelect) {
+                        chatModelSelect.value = this.storedModel;
+                    }
                 }
             }
         } catch (error) {
@@ -258,6 +270,12 @@ class AuthManager {
                         this.storedApiKey = apiKey;
                         this.storedProvider = provider;
                         this.storedModel = model;
+                        
+                        // Sync the chat model dropdown with the saved model
+                        const chatModelSelect = document.getElementById('chatModel');
+                        if (chatModelSelect) {
+                            chatModelSelect.value = model;
+                        }
                         
                         this.closeApiKeyModal();
                         showNotification('API key saved successfully', 'success');
