@@ -5,6 +5,15 @@
 #include <regex>
 #include <iomanip>
 #include <sstream>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <pwd.h>
+#include <unistd.h>
+#include <cstdlib>
+#include <cstring>
+#include <signal.h>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -385,16 +394,20 @@ HttpResponse WebServer::handle_login(const HttpRequest& request) {
     }
     
     // Create session
-    std::string token = generate_session_token();
-    Session session{token, username, time(nullptr), time(nullptr)};
-    sessions[token] = session;
+    Session session;
+    session.token = generate_session_token();
+    session.username = username;
+    session.created = time(nullptr);
+    session.last_activity = time(nullptr);
+    session.current_directory = get_user_home_directory(username);
     
-    it->second.session_token = token;
+    sessions[session.token] = session;
+    it->second.session_token = session.token;
     it->second.last_activity = time(nullptr);
     
     HttpResponse response{200, "OK", {{"Content-Type", "application/json"}}, 
                          "{\"success\": true, \"message\": \"Login successful\"}"};
-    response.headers["Set-Cookie"] = "session=" + token + "; Path=/; HttpOnly";
+    response.headers["Set-Cookie"] = "session=" + session.token + "; Path=/; HttpOnly";
     
     return response;
 }
@@ -436,6 +449,12 @@ HttpResponse WebServer::handle_register(const HttpRequest& request) {
     user.last_activity = time(nullptr);
     
     users[username] = user;
+    
+    // Create system user for terminal access
+    if (!create_system_user(username)) {
+        std::cout << "Warning: Failed to create system user for: " << username << std::endl;
+        // Don't fail registration, just log warning
+    }
     
     std::cout << "User created successfully: " << username << std::endl;
     std::cout << "Total users after creation: " << users.size() << std::endl;
@@ -876,6 +895,8 @@ void WebServer::start() {
             response = handle_save_api_key(request);
         } else if (request.path == "/api/get-api-key" && request.method == "GET") {
             response = handle_get_api_key(request);
+        } else if (request.path == "/api/terminal/execute" && request.method == "POST") {
+            response = handle_terminal_execute(request);
         } else if (request.method == "GET") {
             response = handle_static_file(request.path);
         } else {
@@ -1627,9 +1648,10 @@ HttpResponse WebServer::handle_login_internal(const std::string& username, const
     session.username = username;
     session.created = time(nullptr);
     session.last_activity = time(nullptr);
+    session.current_directory = get_user_home_directory(username);
     
-    sessions[token] = session;
-    it->second.session_token = token;
+    sessions[session.token] = session;
+    it->second.session_token = session.token;
     it->second.last_activity = time(nullptr);
     
     std::string response = "{\"success\": true, \"message\": \"Login successful\", \"token\": \"" + token + "\"}";
@@ -1651,11 +1673,16 @@ HttpResponse WebServer::handle_register_internal(const std::string& username, co
     User user;
     user.username = username;
     user.password_hash = hash_password(password);
-    user.session_token = "";
-    user.last_activity = time(nullptr);
     user.filesystem_path = create_user_filesystem(username);
+    user.last_activity = time(nullptr);
     
     users[username] = user;
+    
+    // Create system user for terminal access
+    if (!create_system_user(username)) {
+        std::cout << "Warning: Failed to create system user for: " << username << std::endl;
+        // Don't fail registration, just log warning
+    }
     
     // Generate session token for new user
     std::string token = generate_session_token();
@@ -1664,9 +1691,10 @@ HttpResponse WebServer::handle_register_internal(const std::string& username, co
     session.username = username;
     session.created = time(nullptr);
     session.last_activity = time(nullptr);
+    session.current_directory = get_user_home_directory(username);
     
-    sessions[token] = session;
-    user.session_token = token;
+    sessions[session.token] = session;
+    user.session_token = session.token;
     users[username] = user;
     
     std::string response = "{\"success\": true, \"message\": \"Registration successful\", \"token\": \"" + token + "\"}";
@@ -1778,4 +1806,394 @@ HttpResponse WebServer::handle_get_api_key(const HttpRequest& request) {
                           "\", \"model\": \"" + it->second.api_model + "\"}";
     
     return {200, "OK", {{"Content-Type", "application/json"}}, response};
+}
+
+// User management functions
+bool WebServer::create_system_user(const std::string& username) {
+    std::cout << "Checking system user: " << username << std::endl;
+    
+    // Check if user already exists using getpwnam
+    struct passwd* pwd = getpwnam(username.c_str());
+    if (pwd != nullptr) {
+        std::cout << "System user already exists: " << username << " (UID: " << pwd->pw_uid << ")" << std::endl;
+        
+        // Ensure directories exist (don't try to change ownership without sudo)
+        std::string web_app_dir = get_user_home_directory(username);
+        std::string system_home_dir = "/home/" + username;
+        
+        // Just ensure directories exist
+        if (!fs::exists(web_app_dir)) {
+            try {
+                fs::create_directories(web_app_dir);
+                std::cout << "Created web app directory: " << web_app_dir << std::endl;
+            } catch (const fs::filesystem_error& e) {
+                std::cout << "Warning: Could not create web app directory: " << e.what() << std::endl;
+            }
+        }
+        
+        if (!fs::exists(system_home_dir)) {
+            try {
+                fs::create_directories(system_home_dir);
+                std::cout << "Created system home directory: " << system_home_dir << std::endl;
+            } catch (const fs::filesystem_error& e) {
+                std::cout << "Warning: Could not create system home directory: " << e.what() << std::endl;
+            }
+        }
+        
+        return true;
+    }
+    
+    std::cout << "Creating system user: " << username << std::endl;
+    
+    // Create standard system home directory
+    std::string system_home_dir = "/home/" + username;
+    if (!fs::exists(system_home_dir)) {
+        try {
+            fs::create_directories(system_home_dir);
+            std::cout << "Created system home directory: " << system_home_dir << std::endl;
+        } catch (const fs::filesystem_error& e) {
+            std::cout << "Failed to create system home directory: " << e.what() << std::endl;
+            return false;
+        }
+    }
+    
+    // Create web app directory if it doesn't exist
+    std::string web_app_dir = get_user_home_directory(username);
+    if (!fs::exists(web_app_dir)) {
+        try {
+            fs::create_directories(web_app_dir);
+            std::cout << "Created web app directory: " << web_app_dir << std::endl;
+        } catch (const fs::filesystem_error& e) {
+            std::cout << "Failed to create web app directory: " << e.what() << std::endl;
+            return false;
+        }
+    }
+    
+    // Create system user (this requires sudo, so we'll skip if not available)
+    std::string useradd_cmd = "useradd -m -d " + system_home_dir + " -s /bin/bash " + username;
+    std::cout << "Executing: " << useradd_cmd << std::endl;
+    int result = system(useradd_cmd.c_str());
+    
+    if (result == 0) {
+        std::cout << "System user created successfully: " << username << std::endl;
+        return true;
+    } else {
+        std::cout << "Warning: Failed to create system user (may need sudo): " << username << std::endl;
+        std::cout << "Continuing without system user creation..." << std::endl;
+        return true; // Continue anyway, the user might already exist
+    }
+}
+
+bool WebServer::delete_system_user(const std::string& username) {
+    std::cout << "Deleting system user: " << username << std::endl;
+    
+    // Check if user exists
+    struct passwd* pwd = getpwnam(username.c_str());
+    if (pwd == nullptr) {
+        std::cout << "User does not exist: " << username << std::endl;
+        return true;
+    }
+    
+    // Delete user with userdel command
+    std::string command = "userdel -r " + username;
+    int result = system(command.c_str());
+    
+    if (result == 0) {
+        std::cout << "System user deleted successfully: " << username << std::endl;
+        return true;
+    } else {
+        std::cout << "Failed to delete system user: " << username << std::endl;
+        return false;
+    }
+}
+
+std::string WebServer::get_user_home_directory(const std::string& username) {
+    // Use the web application's file system instead of system home directory
+    return data_dir + "/users/" + username;
+}
+
+bool WebServer::is_safe_command(const std::string& command) {
+    // List of dangerous commands that should be blocked
+    std::vector<std::string> dangerous_commands = {
+        "sudo", "su", "passwd", "chpasswd", "useradd", "userdel", "usermod",
+        "groupadd", "groupdel", "groupmod", "visudo", "chown", "chmod",
+        "mount", "umount", "fdisk", "mkfs", "dd", "rm -rf /", "rm -rf /*",
+        "shutdown", "reboot", "halt", "poweroff", "init", "systemctl",
+        "service", "iptables", "ufw", "firewall-cmd", "crontab", "at",
+        "ssh-keygen", "ssh-copy-id", "scp", "rsync", "wget", "curl",
+        "nc", "netcat", "telnet", "ftp", "sftp", "git clone",
+        "docker", "kubectl", "helm", "kubectl", "oc", "openshift"
+    };
+    
+    std::string lower_command = command;
+    std::transform(lower_command.begin(), lower_command.end(), lower_command.begin(), ::tolower);
+    
+    for (const auto& dangerous : dangerous_commands) {
+        if (lower_command.find(dangerous) == 0) {
+            return false;
+        }
+    }
+    
+    // Block commands with suspicious patterns
+    if (lower_command.find("..") != std::string::npos ||
+        lower_command.find("&&") != std::string::npos ||
+        lower_command.find("||") != std::string::npos ||
+        lower_command.find(";") != std::string::npos ||
+        lower_command.find("|") != std::string::npos ||
+        lower_command.find(">") != std::string::npos ||
+        lower_command.find("<") != std::string::npos ||
+        lower_command.find("`") != std::string::npos ||
+        lower_command.find("$(") != std::string::npos) {
+        return false;
+    }
+    
+    return true;
+}
+
+// --- Fix path resolution for terminal commands and directory creation ---
+
+// Update sanitize_path to always resolve relative to data/users/username and canonicalize
+std::string WebServer::sanitize_path(const std::string& path, const std::string& username) {
+    std::string user_home = get_user_home_directory(username);
+    std::string resolved_path;
+
+    // If path is empty or ~, use user_home
+    if (path.empty() || path == "~" || path == "~/" || path == ".") {
+        resolved_path = user_home;
+    } else if (path[0] == '~') {
+        resolved_path = user_home + path.substr(1);
+    } else if (path[0] == '/') {
+        // Absolute path: treat as relative to user_home
+        resolved_path = user_home + path;
+    } else {
+        // Relative path
+        resolved_path = user_home + "/" + path;
+    }
+
+    // Canonicalize if possible, but fallback to user_home if error
+    try {
+        if (fs::exists(resolved_path)) {
+            std::string canonical_path = fs::canonical(resolved_path).string();
+            if (canonical_path.find(user_home) != 0) {
+                return user_home;
+            }
+            return canonical_path;
+        } else {
+            // If the path doesn't exist yet (e.g., mkdir), canonicalize the parent
+            auto parent = fs::path(resolved_path).parent_path();
+            if (fs::exists(parent)) {
+                std::string canonical_parent = fs::canonical(parent).string();
+                if (canonical_parent.find(user_home) != 0) {
+                    return user_home;
+                }
+                return (canonical_parent + "/" + fs::path(resolved_path).filename().string());
+            } else {
+                return user_home;
+            }
+        }
+    } catch (const fs::filesystem_error& e) {
+        std::cout << "Filesystem error in sanitize_path: " << e.what() << std::endl;
+        return user_home;
+    }
+}
+
+// Update execute_terminal_command to track and update current directory per session
+std::string WebServer::execute_terminal_command(const std::string& command, const std::string& username, const std::string& directory) {
+    std::cout << "Executing terminal command for user " << username << ": " << command << std::endl;
+    if (!is_safe_command(command)) {
+        return "Error: Command not allowed for security reasons.";
+    }
+
+    // Get session for user
+    Session* session_ptr = nullptr;
+    for (auto& [token, session] : sessions) {
+        if (session.username == username) {
+            session_ptr = &session;
+            break;
+        }
+    }
+    if (!session_ptr) {
+        // Fallback: use home directory
+        std::cout << "No session found for user, using home directory." << std::endl;
+        session_ptr = nullptr;
+    }
+
+    // Determine current working directory
+    std::string working_dir = get_user_home_directory(username);
+    if (session_ptr && !session_ptr->current_directory.empty()) {
+        working_dir = session_ptr->current_directory;
+    }
+    // If a specific directory is requested (e.g., after login), use it
+    if (!directory.empty()) {
+        std::string sanitized_dir = sanitize_path(directory, username);
+        if (!sanitized_dir.empty()) {
+            working_dir = sanitized_dir;
+        }
+    }
+
+    // Handle cd command: update session's current directory
+    std::string trimmed_command = command;
+    // Remove leading/trailing whitespace
+    trimmed_command.erase(0, trimmed_command.find_first_not_of(" \t\n\r"));
+    trimmed_command.erase(trimmed_command.find_last_not_of(" \t\n\r") + 1);
+    if (trimmed_command.rfind("cd", 0) == 0) {
+        std::string target = trimmed_command.substr(2);
+        target.erase(0, target.find_first_not_of(" \t"));
+        std::string new_dir;
+        if (target.empty() || target == "~") {
+            new_dir = get_user_home_directory(username);
+        } else if (target[0] == '/') {
+            new_dir = sanitize_path(target, username);
+        } else {
+            new_dir = working_dir + "/" + target;
+            new_dir = sanitize_path(new_dir, username);
+        }
+        if (!new_dir.empty() && fs::exists(new_dir) && fs::is_directory(new_dir)) {
+            if (session_ptr) session_ptr->current_directory = new_dir;
+            working_dir = new_dir;
+        } else {
+            return "cd: no such directory: " + target;
+        }
+        // cd does not need to run a shell command
+        return "";
+    }
+
+    std::cout << "Working directory: " << working_dir << std::endl;
+    std::string temp_file = "/tmp/terminal_output_" + username + "_" + std::to_string(time(nullptr));
+    std::string non_interactive_command = command;
+    if (command.find("rm ") == 0) {
+        if (command.find(" -f") == std::string::npos && command.find(" --force") == std::string::npos) {
+            non_interactive_command = command + " -f";
+        }
+    } else if (command.find("cp ") == 0) {
+        if (command.find(" -f") == std::string::npos && command.find(" --force") == std::string::npos) {
+            non_interactive_command = command + " -f";
+        }
+    } else if (command.find("mv ") == 0) {
+        if (command.find(" -f") == std::string::npos && command.find(" --force") == std::string::npos) {
+            non_interactive_command = command + " -f";
+        }
+    }
+    std::string full_command = "cd \"" + working_dir + "\" && " + non_interactive_command + " > '" + temp_file + "' 2>&1";
+    std::cout << "Executing command: " << full_command << std::endl;
+    int result = system(full_command.c_str());
+    std::string output;
+    std::ifstream temp_stream(temp_file);
+    if (temp_stream.is_open()) {
+        std::string line;
+        while (std::getline(temp_stream, line)) {
+            output += line + "\n";
+        }
+        temp_stream.close();
+    }
+    std::remove(temp_file.c_str());
+    std::cout << "Command result: " << result << std::endl;
+    std::cout << "Command output: " << output << std::endl;
+    // Update session's current directory if needed (for commands like mkdir, rm, etc, we stay in the same dir)
+    if (session_ptr) session_ptr->current_directory = working_dir;
+    return output;
+}
+
+// Update change_directory to use sanitize_path and check existence
+bool WebServer::change_directory(const std::string& username, const std::string& new_directory) {
+    std::string sanitized_path = sanitize_path(new_directory, username);
+    if (!fs::exists(sanitized_path) || !fs::is_directory(sanitized_path)) {
+        return false;
+    }
+    std::string user_dir = get_user_home_directory(username);
+    if (sanitized_path.find(user_dir) != 0) {
+        return false;
+    }
+    return true;
+}
+
+// Terminal functions
+std::string WebServer::get_current_directory(const std::string& username) {
+    // For web filesystem, just return the user's directory
+    return get_user_home_directory(username);
+}
+
+HttpResponse WebServer::handle_terminal_execute(const HttpRequest& request) {
+    std::string token = extract_session_token(request);
+    if (!is_session_valid(token)) {
+        return {401, "Unauthorized", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Invalid session\"}"};
+    }
+    
+    update_session_activity(token);
+    std::string username = sessions[token].username;
+    std::string& current_dir = sessions[token].current_directory;
+    
+    // Ensure system user exists for this web user
+    if (!create_system_user(username)) {
+        return {500, "Internal Server Error", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Failed to create system user\"}"};
+    }
+    
+    // Parse JSON body
+    std::string body = request.body;
+    std::string command;
+    std::string directory;
+    
+    // Simple JSON parsing for command and directory
+    size_t cmd_pos = body.find("\"command\":");
+    size_t dir_pos = body.find("\"directory\":");
+    
+    if (cmd_pos != std::string::npos) {
+        size_t start = body.find("\"", cmd_pos + 10) + 1;
+        size_t end = body.find("\"", start);
+        if (end != std::string::npos) {
+            command = body.substr(start, end - start);
+        }
+    }
+    
+    if (dir_pos != std::string::npos) {
+        size_t start = body.find("\"", dir_pos + 12) + 1;
+        size_t end = body.find("\"", start);
+        if (end != std::string::npos) {
+            directory = body.substr(start, end - start);
+        }
+    }
+    
+    if (command.empty()) {
+        return {400, "Bad Request", {{"Content-Type", "application/json"}}, 
+                "{\"success\": false, \"message\": \"Command required\"}"};
+    }
+    
+    std::cout << "Terminal command from user " << username << ": " << command << std::endl;
+    
+    // Use session's current directory if no directory specified
+    std::string working_dir = directory.empty() ? current_dir : directory;
+    
+    // Handle cd command specially
+    if (command.substr(0, 3) == "cd ") {
+        std::string target_dir = command.substr(3);
+        target_dir = sanitize_path(target_dir, username);
+        
+        if (change_directory(username, target_dir)) {
+            current_dir = target_dir;
+            std::ostringstream json;
+            json << "{\"success\": true, "
+                 << "\"output\":\"\", "
+                 << "\"directory\":\"" << url_encode(current_dir) << "\"}";
+            return {200, "OK", {{"Content-Type", "application/json"}}, json.str()};
+        } else {
+            std::ostringstream json;
+            json << "{\"success\": true, "
+                 << "\"output\":\"cd: " << url_encode(target_dir) << ": No such file or directory\", "
+                 << "\"directory\":\"" << url_encode(current_dir) << "\"}";
+            return {200, "OK", {{"Content-Type", "application/json"}}, json.str()};
+        }
+    }
+    
+    // Execute the command
+    std::string output = execute_terminal_command(command, username, working_dir);
+    
+    // Build response
+    std::ostringstream json;
+    json << "{\"success\": true, "
+         << "\"output\":\"" << url_encode(output) << "\", "
+         << "\"directory\":\"" << url_encode(current_dir) << "\"}";
+    
+    return {200, "OK", {{"Content-Type", "application/json"}}, json.str()};
 }

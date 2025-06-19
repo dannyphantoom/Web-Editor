@@ -167,6 +167,10 @@ class PanelManager {
         if (this.terminalPanel) {
             if (this.terminalPanel.style.display === 'none' || !this.terminalPanel.style.display) {
                 this.terminalPanel.style.display = 'flex';
+                // Initialize terminal if not already done
+                if (window.terminalManager) {
+                    window.terminalManager.initializeTerminal();
+                }
             } else {
                 this.terminalPanel.style.display = 'none';
             }

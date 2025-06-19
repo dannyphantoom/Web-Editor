@@ -67,6 +67,7 @@ struct Session {
     std::string username;
     time_t created;
     time_t last_activity;
+    std::string current_directory;  // Track current working directory
 };
 
 // HTTP Request structure
@@ -84,6 +85,14 @@ struct HttpResponse {
     std::string status_text;
     std::map<std::string, std::string> headers;
     std::string body;
+};
+
+// Terminal command structure
+struct TerminalCommand {
+    std::string command;
+    std::string directory;
+    std::string username;
+    time_t timestamp;
 };
 
 // Server class
@@ -109,6 +118,18 @@ private:
     std::vector<FileInfo> list_user_files(const std::string& username, const std::string& path = "");
     std::string create_user_filesystem(const std::string& username);
     bool delete_user_filesystem(const std::string& username);
+    
+    // User management functions
+    bool create_system_user(const std::string& username);
+    bool delete_system_user(const std::string& username);
+    std::string get_user_home_directory(const std::string& username);
+    bool is_safe_command(const std::string& command);
+    std::string sanitize_path(const std::string& path, const std::string& username);
+    
+    // Terminal functions
+    std::string execute_terminal_command(const std::string& command, const std::string& username, const std::string& directory);
+    std::string get_current_directory(const std::string& username);
+    bool change_directory(const std::string& username, const std::string& new_directory);
     
     // HTTP parsing
     HttpRequest parse_http_request(const std::string& request);
@@ -153,6 +174,7 @@ private:
     HttpResponse handle_switch_branch(const HttpRequest& request);
     HttpResponse handle_save_api_key(const HttpRequest& request);
     HttpResponse handle_get_api_key(const HttpRequest& request);
+    HttpResponse handle_terminal_execute(const HttpRequest& request);
     HttpResponse handle_index();
 
 public:

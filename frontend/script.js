@@ -430,7 +430,6 @@ function handleFileTreeClick(e) {
 
 function buildFileTree(files) {
     const tree = [];
-    const fileMap = new Map();
     
     // Sort files: directories first, then by name
     const sortedFiles = files.sort((a, b) => {
@@ -440,32 +439,17 @@ function buildFileTree(files) {
         return a.name.localeCompare(b.name);
     });
     
+    // Simply create tree items directly from the files array
+    // Each file should be a direct child of the current directory
     sortedFiles.forEach(file => {
-        const pathParts = file.name.split('/');
-        let currentLevel = tree;
-        let currentPath = '';
-        
-        for (let i = 0; i < pathParts.length; i++) {
-            const part = pathParts[i];
-            currentPath = currentPath ? `${currentPath}/${part}` : part;
-            
-            let existingItem = currentLevel.find(item => item.name === part);
-            if (!existingItem) {
-                const isDirectory = i < pathParts.length - 1 || file.isDirectory;
-                existingItem = {
-                    name: part,
-                    fullPath: currentPath,
-                    isDirectory: isDirectory,
-                    children: [],
-                    originalFile: i === pathParts.length - 1 ? file : null
-                };
-                currentLevel.push(existingItem);
-            }
-            
-            if (i < pathParts.length - 1) {
-                currentLevel = existingItem.children;
-            }
-        }
+        const treeItem = {
+            name: file.name,
+            fullPath: file.path || file.name, // Use path if available, otherwise name
+            isDirectory: file.isDirectory,
+            children: [], // Directories will be populated when expanded
+            originalFile: file
+        };
+        tree.push(treeItem);
     });
     
     return tree;

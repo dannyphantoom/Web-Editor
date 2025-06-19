@@ -958,51 +958,201 @@ body {
 /* --- Terminal Panel (Bottom) --- */
 .terminal-panel {
     position: fixed;
+    bottom: 0;
     left: 0;
     right: 0;
-    bottom: 0;
-    height: 220px;
-    background: #18181b;
-    color: #f1f5f9;
-    border-top: 2px solid var(--border-color);
-    z-index: 20;
-    display: flex;
+    height: 300px;
+    background: #1e1e1e;
+    border-top: 1px solid #333;
+    display: none;
     flex-direction: column;
-    box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
-    resize: vertical;
-    min-height: 120px;
-    max-height: 60vh;
-    transition: height 0.2s;
+    z-index: 1000;
+    font-family: 'Courier New', monospace;
+    color: #f0f0f0;
 }
+
 .terminal-header {
+    background: #2d2d2d;
     padding: 0.5rem 1rem;
-    background: #23232b;
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid #333;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
 }
+
 .terminal-body {
     flex: 1;
-    padding: 1rem;
-    overflow-y: auto;
-    font-family: 'Fira Mono', 'Menlo', 'Monaco', monospace;
-    font-size: 1rem;
+    padding: 0.5rem;
+    overflow: hidden;
+    background: #1e1e1e;
+    position: relative;
+    display: flex;
+    flex-direction: column;
 }
+
 .terminal-placeholder {
-    color: #64748b;
-    font-style: italic;
+    color: #888;
+    text-align: center;
+    margin-top: 2rem;
 }
+
+/* Terminal Interface Styles */
+.terminal-output {
+    margin-bottom: 0.5rem;
+    min-height: 100px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.terminal-input-line {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    position: sticky;
+    bottom: 0;
+    background: #1e1e1e;
+    padding: 0.25rem 0;
+    border-top: 1px solid #333;
+}
+
+.terminal-prompt {
+    color: #4ade80;
+    font-weight: bold;
+    margin-right: 0.5rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.terminal-input {
+    background: transparent;
+    border: none;
+    color: #f0f0f0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    outline: none;
+    flex: 1;
+    caret-color: #f0f0f0;
+    min-width: 0;
+}
+
+.terminal-input::placeholder {
+    color: #666;
+}
+
+.terminal-line {
+    margin-bottom: 0.25rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    padding: 0.1rem 0;
+}
+
+.terminal-line.command {
+    color: #60a5fa;
+    font-weight: bold;
+}
+
+.terminal-line.output {
+    color: #f0f0f0;
+}
+
+.terminal-line.error {
+    color: #f87171;
+}
+
+.terminal-line.success {
+    color: #4ade80;
+}
+
+/* Terminal scrollbar */
+.terminal-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-body::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.terminal-body::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.terminal-body::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* Terminal animations */
+.terminal-line {
+    animation: terminalFadeIn 0.1s ease-out;
+}
+
+@keyframes terminalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(2px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Terminal focus styles */
+.terminal-panel:focus-within .terminal-header {
+    background: #3d3d3d;
+}
+
+/* Terminal resize handle */
 .horizontal-resizer {
     height: 6px;
-    width: 100%;
     cursor: ns-resize;
-    background: #e2e8f0;
+    background: #333;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.horizontal-resizer:hover {
+    background: #555;
+}
+
+.horizontal-resizer::before {
+    content: '';
     position: absolute;
-    top: -3px;
-    left: 0;
-    z-index: 21;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 2px;
+    background: #666;
+    border-radius: 1px;
+}
+
+/* Terminal responsive design */
+@media (max-width: 768px) {
+    .terminal-panel {
+        height: 250px;
+    }
+    
+    .terminal-body {
+        padding: 0.25rem;
+    }
+    
+    .terminal-header {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    .terminal-input {
+        font-size: 0.8rem;
+    }
+    
+    .terminal-line {
+        font-size: 0.8rem;
+    }
 }
 
 /* --- Chat Panel (Right) --- */

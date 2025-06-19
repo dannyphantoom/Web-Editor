@@ -15,6 +15,7 @@ class WebEditorApp {
         this.modules.chatManager = new ChatManager();
         this.modules.searchManager = new SearchManager();
         this.modules.panelManager = new PanelManager();
+        this.modules.terminalManager = new TerminalManager();
         
         // Make modules globally accessible
         window.authManager = this.modules.auth;
@@ -23,6 +24,7 @@ class WebEditorApp {
         window.chatManager = this.modules.chatManager;
         window.searchManager = this.modules.searchManager;
         window.panelManager = this.modules.panelManager;
+        window.terminalManager = this.modules.terminalManager;
     }
 
     setupGlobalFunctions() {
